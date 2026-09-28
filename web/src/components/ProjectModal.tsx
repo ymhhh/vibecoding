@@ -12,6 +12,7 @@ import {
   endpointExamples,
   endpointPlaceholder,
   protocolFromEndpointURL,
+  resolveEndpointAlignment,
 } from '../lib/apiProtocol';
 import {
   X,
@@ -69,8 +70,16 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   );
   const [customModelConfig, setCustomModelConfig] = useState<ModelConfig>(() => {
     const base = existingProject?.customModelConfig || DEFAULT_GLOBAL_MODEL_CONFIG;
+    const savedProtocol: APIProtocol =
+      base.apiProtocol === 'responses' ? 'responses' : 'chat_completions';
+    const aligned = resolveEndpointAlignment(base.openAIBaseUrl || '', savedProtocol);
     // Never put the server secret into the controlled input; blank means "keep existing".
-    return { ...base, openAIApiKey: '' };
+    return {
+      ...base,
+      openAIApiKey: '',
+      openAIBaseUrl: aligned.url,
+      apiProtocol: aligned.protocol,
+    };
   });
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const keyAlreadyConfigured = !!(
@@ -709,7 +718,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                 <div className="space-y-4 p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/10">
                   <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-medium">
                     <Settings2 className="w-4 h-4 text-indigo-500" />
-                    <span>项目专属 OpenAPI 设置</span>
+                    <span>{t.projectOpenAPISettings}</span>
                   </div>
 
                   <div>

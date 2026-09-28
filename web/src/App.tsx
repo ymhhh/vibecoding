@@ -83,6 +83,9 @@ export default function App() {
     }
   }, []);
 
+  /** Skip the first activeProjectId effect after bootstrap (already loaded issues). */
+  const skipActiveRefreshRef = useRef(true);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -136,6 +139,7 @@ export default function App() {
         }
         setIssueCounts(counts);
         setIssues(active ? allIssues.filter((iss) => iss.projectId === active) : []);
+        skipActiveRefreshRef.current = true;
         setLoadError('');
       } catch (err: any) {
         if (!cancelled) setLoadError(err.message || getTranslation(loadLanguage()).loadBackendFailed);
@@ -173,6 +177,10 @@ export default function App() {
   useEffect(() => {
     if (!activeProjectId) {
       setIssues([]);
+      return;
+    }
+    if (skipActiveRefreshRef.current) {
+      skipActiveRefreshRef.current = false;
       return;
     }
     refreshIssues(activeProjectId).catch((err) => showToast('error', err.message));
@@ -244,8 +252,16 @@ export default function App() {
       setProjects((prev) => {
         const next = prev.filter((p) => p.id !== projectId);
         if (activeProjectId === projectId) {
+          skipActiveRefreshRef.current = false;
           setActiveProjectId(next[0]?.id || '');
         }
+        return next;
+      });
+      setIssues((prev) => prev.filter((i) => i.projectId !== projectId));
+      setIssueCounts((prev) => {
+        if (!(projectId in prev)) return prev;
+        const next = { ...prev };
+        delete next[projectId];
         return next;
       });
       showToast('success', t.projectDeleted);
@@ -257,7 +273,11 @@ export default function App() {
   const handleCreateIssue = async (issueData: Partial<Issue>) => {
     try {
       const saved = await api.createIssue(issueData);
-      setIssues((prev) => [saved, ...prev]);
+      setIssues((prev) => (saved.projectId === activeProjectId ? [saved, ...prev] : prev));
+      setIssueCounts((prev) => ({
+        ...prev,
+        [saved.projectId]: (prev[saved.projectId] || 0) + 1,
+      }));
     } catch (err: any) {
       showToast('error', err.message);
     }
@@ -494,8 +514,15 @@ export default function App() {
         unsubscribers.current.get(issueId)?.();
         unsubscribers.current.delete(issueId);
       }
+      const deleted = issues.find((i) => i.id === issueId);
       await api.deleteIssue(issueId);
       setIssues((prev) => prev.filter((i) => i.id !== issueId));
+      if (deleted) {
+        setIssueCounts((prev) => ({
+          ...prev,
+          [deleted.projectId]: Math.max(0, (prev[deleted.projectId] || 0) - 1),
+        }));
+      }
       dismissIssueSession(issueId);
       showToast('success', t.issueDeleted);
     } catch (err: any) {

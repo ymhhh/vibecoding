@@ -7,6 +7,7 @@ import {
   endpointExamples,
   endpointPlaceholder,
   protocolFromEndpointURL,
+  resolveEndpointAlignment,
 } from '../lib/apiProtocol';
 import { Language, ThemeStyle, getTranslation } from '../lib/i18n';
 import { THEME_CONFIGS } from '../lib/theme';
@@ -121,6 +122,21 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
       setMaximized(false);
       return;
     }
+    const savedProtocol: APIProtocol =
+      config.apiProtocol === 'responses' ? 'responses' : 'chat_completions';
+    const aligned = resolveEndpointAlignment(
+      config.openAIBaseUrl || 'https://api.openai.com/v1/chat/completions',
+      savedProtocol
+    );
+    setOpenAIBaseUrl(aligned.url);
+    setApiProtocol(aligned.protocol);
+    setOpenAIApiKey('');
+    setOpenAIModel(config.openAIModel || 'gpt-4o');
+    setTemperature(config.temperature ?? 0.7);
+    setTestResult(null);
+    setAvailableModels([]);
+    setModelsMsg('');
+
     let cancelled = false;
     (async () => {
       try {
@@ -140,7 +156,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [isOpen, config]);
 
   if (!isOpen) return null;
 
@@ -174,12 +190,12 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
     if (res.success) {
       setTestResult({
         success: true,
-        message: `连接成功！模型响应: "${res.message}"`,
+        message: t.testOpenAPIOk.replace('{message}', res.message || ''),
       });
     } else {
       setTestResult({
         success: false,
-        message: `连接失败: ${res.error}`,
+        message: t.testOpenAPIFail.replace('{error}', res.error || ''),
       });
     }
   };
@@ -234,10 +250,10 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
             </div>
             <div>
               <h2 className={`text-xl font-bold flex items-center gap-2 ${themeConfig.textPrimary}`}>
-                大模型 (LLM) API 设置
+                {t.llmSettingsTitle}
               </h2>
               <p className={`text-xs mt-0.5 ${themeConfig.textSecondary}`}>
-                配置 Vibecoding 调用的自定义 OpenAPI 端点 (支持 OpenAI, DeepSeek, Qwen 等)
+                {t.llmSettingsSubtitle}
               </p>
             </div>
           </div>
@@ -245,7 +261,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
             <button
               type="button"
               onClick={() => setMaximized((v) => !v)}
-              title={maximized ? (lang === 'zh' ? '还原' : 'Restore') : lang === 'zh' ? '最大化' : 'Maximize'}
+              title={maximized ? t.windowRestore : t.windowMaximize}
               className={`p-2 rounded-lg transition-colors ${themeConfig.textSecondary} hover:${themeConfig.textPrimary} hover:bg-black/5 dark:hover:bg-white/10`}
             >
               {maximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -266,7 +282,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
           <div className="space-y-4 p-5 rounded-xl border border-indigo-500/30 bg-indigo-500/10">
             <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-medium pb-2 border-b border-indigo-500/20">
               <Globe className="w-4 h-4 text-indigo-500" />
-              <span>OpenAPI 参数配置</span>
+              <span>{t.openAPIParamsConfig}</span>
             </div>
 
             {/* Full endpoint URL */}
@@ -314,7 +330,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
             {/* API Key */}
             <div>
               <label className={`block text-xs font-medium mb-1.5 ${themeConfig.textPrimary}`}>
-                API Key (密钥)
+                {t.apiKeyLabel}
               </label>
               <div className="relative">
                 <input
@@ -341,7 +357,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={`block text-xs font-medium mb-1.5 ${themeConfig.textPrimary}`}>
-                  模型标识 (Model Name)
+                  {t.modelNameLabel}
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -382,7 +398,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
               {/* Temperature */}
               <div>
                 <label className={`block text-xs font-medium mb-1.5 flex items-center justify-between ${themeConfig.textPrimary}`}>
-                  <span>采样温度 (Temperature)</span>
+                  <span>{t.temperatureLabel}</span>
                   <span className="text-indigo-500 font-mono font-bold">{temperature}</span>
                 </label>
                 <input
@@ -408,12 +424,12 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
                 {testing ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-                    测试 API 连接中...
+                    {t.testOpenAPIRunning}
                   </>
                 ) : (
                   <>
                     <Sliders className="w-3.5 h-3.5 text-indigo-500" />
-                    测试 OpenAPI 接口连通性
+                    {t.testOpenAPI}
                   </>
                 )}
               </button>
@@ -446,7 +462,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
             <p className={`text-xs ${themeConfig.textSecondary}`}>{t.codingExecutorHint}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block text-xs space-y-1">
-                <span className={themeConfig.textPrimary}>{lang === 'zh' ? '类型' : 'Type'}</span>
+                <span className={themeConfig.textPrimary}>{t.executorTypeLabel}</span>
                 <SelectField value={execType} onChange={(v) => setExecType(v as 'llm' | 'agent')}>
                   <option value="llm">LLM (VibeBot)</option>
                   <option value="agent">Agent CLI</option>
@@ -474,7 +490,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
                       .map((p) => (
                         <option key={p.id} value={p.preset || p.id} disabled={!p.available && p.id !== 'custom'}>
                           {p.name}
-                          {!p.available && p.id !== 'custom' ? (lang === 'zh' ? '（未安装）' : ' (missing)') : ''}
+                          {!p.available && p.id !== 'custom' ? t.executorNotInstalled : ''}
                         </option>
                       ))}
                   </SelectField>
@@ -526,13 +542,13 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
             onClick={onClose}
             className={`px-4 py-2 rounded-xl text-xs font-medium border transition-colors ${themeConfig.btnSecondary} ${themeConfig.btnSecondaryText}`}
           >
-            取消
+            {t.cancel}
           </button>
           <button
             onClick={handleSave}
             className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-md transition-all"
           >
-            保存配置
+            {t.saveConfig}
           </button>
         </div>
       </div>
