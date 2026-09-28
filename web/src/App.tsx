@@ -42,6 +42,7 @@ export default function App() {
   const [globalModelConfig, setGlobalModelConfig] = useState<ModelConfig>(DEFAULT_MODEL);
   const [projects, setProjects] = useState<Project[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [issueCounts, setIssueCounts] = useState<Record<string, number>>({});
   const [activeProjectId, setActiveProjectId] = useState<string>('');
   const [language, setLanguage] = useState<Language>(loadLanguage);
   const [themeStyle, setThemeStyle] = useState<ThemeStyle>(loadThemeStyle);
@@ -77,6 +78,9 @@ export default function App() {
   const refreshIssues = useCallback(async (projectId?: string) => {
     const list = await api.listIssues(projectId);
     setIssues(list);
+    if (projectId) {
+      setIssueCounts((prev) => ({ ...prev, [projectId]: list.length }));
+    }
   }, []);
 
   useEffect(() => {
@@ -124,12 +128,14 @@ export default function App() {
         if (prefs.themeStyle && ['glass', 'slate', 'light', 'oled', 'oat'].includes(prefs.themeStyle)) {
           setThemeStyle(prefs.themeStyle as ThemeStyle);
         }
-        if (active) {
-          const iss = await api.listIssues(active);
-          if (!cancelled) setIssues(iss);
-        } else {
-          setIssues([]);
+        const allIssues = await api.listIssues();
+        if (cancelled) return;
+        const counts: Record<string, number> = {};
+        for (const iss of allIssues) {
+          counts[iss.projectId] = (counts[iss.projectId] || 0) + 1;
         }
+        setIssueCounts(counts);
+        setIssues(active ? allIssues.filter((iss) => iss.projectId === active) : []);
         setLoadError('');
       } catch (err: any) {
         if (!cancelled) setLoadError(err.message || getTranslation(loadLanguage()).loadBackendFailed);
@@ -174,6 +180,15 @@ export default function App() {
 
   const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0];
   const activeIssues = issues.filter((i) => i.projectId === activeProject?.id);
+
+  useEffect(() => {
+    if (!activeProjectId) return;
+    if (issues.some((iss) => iss.projectId !== activeProjectId)) return;
+    setIssueCounts((prev) => {
+      if (prev[activeProjectId] === issues.length) return prev;
+      return { ...prev, [activeProjectId]: issues.length };
+    });
+  }, [issues, activeProjectId]);
 
   const effectiveModelConfig: ModelConfig =
     activeProject?.useCustomModelConfig && activeProject?.customModelConfig
@@ -589,7 +604,12 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-0.5 shrink-0">
                         {!confirmingDelete && (
-                          <span className={`text-[10px] font-mono ${themeConfig.textMuted}`}>{proj.gitRepos.length}</span>
+                          <span
+                            className={`text-[10px] font-mono ${themeConfig.textMuted}`}
+                            title={t.projectIssueCount.replace('{n}', String(issueCounts[proj.id] || 0))}
+                          >
+                            {issueCounts[proj.id] || 0}
+                          </span>
                         )}
                         {!confirmingDelete && (
                           <button
