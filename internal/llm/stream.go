@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ymhhh/go-common/logger"
+	"github.com/ymhhh/vibecoding/internal/model"
 )
 
 // ChatStream streams model tokens via onDelta (may be called many times).
@@ -34,17 +35,25 @@ func (c *Client) ChatStream(ctx context.Context, req ChatRequest, onDelta func(s
 	case strings.TrimSpace(cfg.OpenAIBaseURL) != "" && strings.TrimSpace(cfg.OpenAIAPIKey) != "":
 		provider = "openai"
 		modelName = firstNonEmpty(cfg.OpenAIModel, "gpt-4o")
+		chatFn := c.chatOpenAI
+		streamFn := c.streamOpenAI
+		if cfg.EffectiveAPIProtocol() == model.APIProtocolResponses {
+			chatFn = c.chatResponses
+			streamFn = c.streamResponses
+		}
 		var gotDelta bool
-		text, err = c.streamOpenAI(ctx, req, func(delta string) {
+		text, err = streamFn(ctx, req, func(delta string) {
 			if delta != "" {
 				gotDelta = true
 			}
 			onDelta(delta)
 		})
-		// Some gateways reject stream or json+stream — fall back once (only if nothing streamed).
-		if err != nil && !gotDelta {
+		// Some gateways reject stream or json+stream — fall back once (only if
+		// nothing streamed, and only for non-terminal stream errors; terminal
+		// failures like response.failed must surface as-is).
+		if err != nil && !gotDelta && !isTerminalStreamErr(err) {
 			logger.L().WithError(err).Warn("llm stream failed; falling back to non-stream")
-			text, err = c.chatOpenAI(ctx, req)
+			text, err = chatFn(ctx, req)
 			if err == nil && text != "" {
 				onDelta(text)
 			}
@@ -253,4 +262,11 @@ func readOpenAISSE(r io.Reader, onDelta func(string)) (string, error) {
 		return full.String(), err
 	}
 	return full.String(), nil
+}
+
+// isTerminalStreamErr reports whether a stream error is a definitive model
+// failure (e.g. a response.failed event) — retrying or falling back to a
+// non-stream call would only repeat the same failure.
+func isTerminalStreamErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "OpenAPI stream error:")
 }

@@ -193,6 +193,7 @@ func (s *Server) handleTestOpenAPI(w http.ResponseWriter, r *http.Request) {
 		OpenAIAPIKey  string `json:"openAIApiKey"`
 		OpenAIModel   string `json:"openAIModel"`
 		ProjectID     string `json:"projectId"`
+		APIProtocol   string `json:"apiProtocol"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, 400, "invalid JSON")
@@ -230,7 +231,7 @@ func (s *Server) handleTestOpenAPI(w http.ResponseWriter, r *http.Request) {
 	// Connectivity test shares OpenAPI retries (10) for 429 rate limits.
 	ctx, cancel := context.WithTimeout(r.Context(), llm.RequestTimeout)
 	defer cancel()
-	reply, err := s.LLM.TestOpenAPI(ctx, baseURL, key, modelName)
+	reply, err := s.LLM.TestOpenAPI(ctx, baseURL, key, modelName, body.APIProtocol)
 	if err != nil {
 		writeJSON(w, 400, map[string]any{"success": false, "error": err.Error()})
 		return

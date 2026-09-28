@@ -47,6 +47,10 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
   const [openAIApiKey, setOpenAIApiKey] = useState('');
   const [openAIModel, setOpenAIModel] = useState(config.openAIModel || 'gpt-4o');
   const [temperature, setTemperature] = useState(config.temperature ?? 0.7);
+  const [apiProtocol, setApiProtocol] = useState<'chat_completions' | 'responses'>(
+    config.apiProtocol === 'responses' ? 'responses' : 'chat_completions'
+  );
+
 
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -77,6 +81,13 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
     setModelsMsg(t.fetchModelsOk.replace('{count}', String(res.models.length)));
   };
 
+
+  const protocolHint =
+    apiProtocol === 'responses'
+      ? lang === 'zh'
+        ? '填写完整 /responses 端点，例如 https://api.openai.com/v1/responses'
+        : 'Full /responses endpoint, e.g. https://api.openai.com/v1/responses'
+      : '';
 
   const [execType, setExecType] = useState<'llm' | 'agent'>('llm');
   const [execPreset, setExecPreset] = useState('claude');
@@ -142,6 +153,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
       openAIBaseUrl,
       openAIApiKey, // empty => server uses stored key
       openAIModel,
+      apiProtocol,
     });
     setTesting(false);
     if (res.success) {
@@ -163,6 +175,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
       openAIBaseUrl: openAIBaseUrl.trim(),
       openAIApiKey: openAIApiKey.trim(), // empty keeps existing server-side key
       openAIModel: openAIModel.trim(),
+      apiProtocol,
       temperature,
     });
     const execBody: ExecutorConfig = {
@@ -264,6 +277,23 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
                 {' | '}
                 <code className="font-semibold">http://llm-gw.jd.local/v1/chat/completions</code>
               </p>
+            </div>
+
+            {/* API protocol */}
+            <div>
+              <label className={`block text-xs font-medium mb-1.5 ${themeConfig.textPrimary}`}>
+                {t.apiProtocolLabel}
+              </label>
+              <div className="flex items-center gap-3">
+                <SelectField value={apiProtocol} onChange={(v) => setApiProtocol(v as 'chat_completions' | 'responses')}>
+                  <option value="chat_completions">Chat Completions</option>
+                  <option value="responses">Responses</option>
+                </SelectField>
+              </div>
+              <p className={`text-[11px] mt-1 ${themeConfig.textMuted}`}>{t.apiProtocolHint}</p>
+              {protocolHint && (
+                <p className={`text-[11px] mt-0.5 font-mono ${themeConfig.textSecondary}`}>{protocolHint}</p>
+              )}
             </div>
 
             {/* API Key */}

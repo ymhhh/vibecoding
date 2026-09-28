@@ -69,6 +69,9 @@ type ModelConfig struct {
 	OpenAIAPIKey    string  `json:"openAIApiKey"`
 	OpenAIModel     string  `json:"openAIModel"`
 	Temperature     float64 `json:"temperature"`
+	// APIProtocol selects the wire protocol for the OpenAI-compatible endpoint:
+	// "chat_completions" (default) or "responses".
+	APIProtocol string `json:"apiProtocol,omitempty"`
 	// KeyConfigured is set on API responses when a key exists server-side.
 	KeyConfigured bool   `json:"keyConfigured,omitempty"`
 	KeyHint       string `json:"keyHint,omitempty"`
@@ -142,6 +145,32 @@ func DefaultModelConfig() ModelConfig {
 		OpenAIAPIKey:    "",
 		OpenAIModel:     "gpt-4o",
 		Temperature:     0.7,
+	}
+}
+
+// API protocol identifiers stored in ModelConfig.APIProtocol.
+const (
+	APIProtocolChatCompletions = "chat_completions"
+	APIProtocolResponses       = "responses"
+)
+
+// EffectiveAPIProtocol returns the protocol to use for a config: the stored
+// value when valid; otherwise inferred from the endpoint URL (an URL ending
+// in /responses selects the Responses API); empty/unrecognized values fall
+// back to chat_completions.
+func (m ModelConfig) EffectiveAPIProtocol() string {
+	switch strings.TrimSpace(m.APIProtocol) {
+	case APIProtocolResponses:
+		return APIProtocolResponses
+	case APIProtocolChatCompletions:
+		return APIProtocolChatCompletions
+	default:
+		// unset or unknown: infer from the endpoint URL
+		u := strings.ToLower(strings.TrimRight(strings.TrimSpace(m.OpenAIBaseURL), "/"))
+		if strings.HasSuffix(u, "/responses") {
+			return APIProtocolResponses
+		}
+		return APIProtocolChatCompletions
 	}
 }
 

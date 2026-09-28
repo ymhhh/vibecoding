@@ -64,7 +64,11 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (string, error) {
 	case strings.TrimSpace(cfg.OpenAIBaseURL) != "" && strings.TrimSpace(cfg.OpenAIAPIKey) != "":
 		provider = "openai"
 		modelName = firstNonEmpty(cfg.OpenAIModel, "gpt-4o")
-		text, err = c.chatOpenAI(ctx, req)
+		if cfg.EffectiveAPIProtocol() == model.APIProtocolResponses {
+			text, err = c.chatResponses(ctx, req)
+		} else {
+			text, err = c.chatOpenAI(ctx, req)
+		}
 	case os.Getenv("GEMINI_API_KEY") != "":
 		provider = "gemini"
 		modelName = "gemini-2.0-flash"
@@ -293,7 +297,7 @@ func (c *Client) chatGemini(ctx context.Context, apiKey string, req ChatRequest)
 	return parsed.Candidates[0].Content.Parts[0].Text, nil
 }
 
-func (c *Client) TestOpenAPI(ctx context.Context, baseURL, apiKey, modelName string) (string, error) {
+func (c *Client) TestOpenAPI(ctx context.Context, baseURL, apiKey, modelName, apiProtocol string) (string, error) {
 	if err := ValidateBaseURL(baseURL); err != nil {
 		return "", err
 	}
@@ -301,10 +305,12 @@ func (c *Client) TestOpenAPI(ctx context.Context, baseURL, apiKey, modelName str
 		return "", fmt.Errorf("API key required")
 	}
 	cfg := model.ModelConfig{
-		OpenAIBaseURL: baseURL,
-		OpenAIAPIKey:  apiKey,
-		OpenAIModel:   firstNonEmpty(modelName, "gpt-4o-mini"),
-		Temperature:   1,
+		UseCustomOpenAI: true,
+		OpenAIBaseURL:   baseURL,
+		OpenAIAPIKey:    apiKey,
+		OpenAIModel:     firstNonEmpty(modelName, "gpt-4o-mini"),
+		APIProtocol:     apiProtocol,
+		Temperature:     1,
 	}
 	// Omit temperature: some models (e.g. GPT-*-joybuilder) reject 0 and only allow default.
 	return c.Chat(ctx, ChatRequest{

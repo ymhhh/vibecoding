@@ -4,6 +4,7 @@ import { DEFAULT_GLOBAL_MODEL_CONFIG, DEFAULT_BRANCH_PREFIX_CONFIG } from '../da
 import { Language, ThemeStyle, getTranslation } from '../lib/i18n';
 import { THEME_CONFIGS } from '../lib/theme';
 import { api } from '../lib/api';
+import { ThemedSelect } from './ThemedSelect';
 import { testOpenAPIConnection, fetchAvailableModels } from '../lib/llm';
 import {
   X,
@@ -109,6 +110,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
       openAIBaseUrl: customModelConfig.openAIBaseUrl.trim(),
       openAIApiKey: apiKeyDraft.trim(),
       openAIModel: customModelConfig.openAIModel.trim(),
+      apiProtocol: customModelConfig.apiProtocol,
       // Blank key → server uses this project's stored custom key.
       projectId: existingProject?.id,
     });
@@ -715,6 +717,26 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                       className={`w-full px-3 py-2 border rounded-lg text-xs font-mono ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
                     />
                     <p className={`text-[11px] mt-1 ${themeConfig.textMuted}`}>{t.baseUrlHint}</p>
+                  </div>
+
+                  <div>
+                    <label className={`block text-xs font-medium mb-1 ${themeConfig.textPrimary}`}>{t.apiProtocolLabel}</label>
+                    <ThemedSelect
+                      value={customModelConfig.apiProtocol || 'chat_completions'}
+                      onChange={(e) =>
+                        setCustomModelConfig({
+                          ...customModelConfig,
+                          apiProtocol: e.target.value as 'chat_completions' | 'responses',
+                        })
+                      }
+                      isLight={isLight}
+                      chevronClassName={themeConfig.textSecondary}
+                      className={`w-full px-3 py-2 border rounded-lg text-xs ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
+                    >
+                      <option value="chat_completions">Chat Completions</option>
+                      <option value="responses">Responses</option>
+                    </ThemedSelect>
+                    <p className={`text-[11px] mt-1 ${themeConfig.textMuted}`}>{t.apiProtocolHint}</p>
                   </div>
 
                   <div>

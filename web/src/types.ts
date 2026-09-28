@@ -25,6 +25,8 @@ export interface ModelConfig {
   openAIApiKey: string;
   openAIModel: string; // e.g. gpt-4o, gpt-4o-mini, deepseek-chat, deepseek-r1
   temperature: number;
+  /** Wire protocol for the endpoint: 'chat_completions' (default) or 'responses'. */
+  apiProtocol?: 'chat_completions' | 'responses' | '';
   keyConfigured?: boolean;
   keyHint?: string;
 }
