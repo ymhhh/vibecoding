@@ -7,6 +7,13 @@ import { api } from '../lib/api';
 import { ThemedSelect } from './ThemedSelect';
 import { testOpenAPIConnection, fetchAvailableModels } from '../lib/llm';
 import {
+  APIProtocol,
+  alignEndpointURLToProtocol,
+  endpointExamples,
+  endpointPlaceholder,
+  protocolFromEndpointURL,
+} from '../lib/apiProtocol';
+import {
   X,
   FolderPlus,
   GitBranch,
@@ -710,25 +717,48 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                     <input
                       type="text"
                       value={customModelConfig.openAIBaseUrl}
-                      onChange={(e) =>
-                        setCustomModelConfig({ ...customModelConfig, openAIBaseUrl: e.target.value })
-                      }
-                      placeholder="http://llm-gw.jd.local/v1/chat/completions"
+                      onChange={(e) => {
+                        const nextUrl = e.target.value;
+                        const inferred = protocolFromEndpointURL(nextUrl);
+                        setCustomModelConfig({
+                          ...customModelConfig,
+                          openAIBaseUrl: nextUrl,
+                          ...(inferred ? { apiProtocol: inferred } : {}),
+                        });
+                      }}
+                      placeholder={endpointPlaceholder(
+                        customModelConfig.apiProtocol === 'responses' ? 'responses' : 'chat_completions'
+                      )}
                       className={`w-full px-3 py-2 border rounded-lg text-xs font-mono ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
                     />
-                    <p className={`text-[11px] mt-1 ${themeConfig.textMuted}`}>{t.baseUrlHint}</p>
+                    <p className={`text-[11px] mt-1 ${themeConfig.textMuted}`}>
+                      {customModelConfig.apiProtocol === 'responses' ? t.baseUrlHintResponses : t.baseUrlHintChat}
+                      <br />
+                      {t.baseUrlHint}
+                      <br />
+                      {endpointExamples(
+                        customModelConfig.apiProtocol === 'responses' ? 'responses' : 'chat_completions'
+                      ).map((ex, i) => (
+                        <React.Fragment key={ex}>
+                          {i > 0 ? ' | ' : null}
+                          <code className="font-semibold">{ex}</code>
+                        </React.Fragment>
+                      ))}
+                    </p>
                   </div>
 
                   <div>
                     <label className={`block text-xs font-medium mb-1 ${themeConfig.textPrimary}`}>{t.apiProtocolLabel}</label>
                     <ThemedSelect
                       value={customModelConfig.apiProtocol || 'chat_completions'}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const next = e.target.value as APIProtocol;
                         setCustomModelConfig({
                           ...customModelConfig,
-                          apiProtocol: e.target.value as 'chat_completions' | 'responses',
-                        })
-                      }
+                          apiProtocol: next,
+                          openAIBaseUrl: alignEndpointURLToProtocol(customModelConfig.openAIBaseUrl, next),
+                        });
+                      }}
                       isLight={isLight}
                       chevronClassName={themeConfig.textSecondary}
                       className={`w-full px-3 py-2 border rounded-lg text-xs ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}

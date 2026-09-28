@@ -324,18 +324,18 @@ func (c *Client) TestOpenAPI(ctx context.Context, baseURL, apiKey, modelName, ap
 }
 
 // modelsURL derives the GET /v1/models listing endpoint from a configured
-// chat-completions URL. The convention: strip the trailing
-// "/chat/completions" (or legacy "/completions") path segment and append
-// "/models", so "https://api.openai.com/v1/chat/completions" becomes
-// "https://api.openai.com/v1/models". If the URL already ends with "/models"
-// it is used as-is.
+// chat-completions or responses URL. The convention: strip the trailing
+// "/chat/completions", "/responses", or legacy "/completions" path segment
+// and append "/models", so "https://api.openai.com/v1/chat/completions"
+// becomes "https://api.openai.com/v1/models". If the URL already ends with
+// "/models" it is used as-is.
 func modelsURL(completions string) (string, error) {
 	base := strings.TrimSpace(completions)
 	if base == "" {
 		return "", fmt.Errorf("base URL required")
 	}
 	base = strings.TrimRight(base, "/")
-	for _, suffix := range []string{"/chat/completions", "/completions"} {
+	for _, suffix := range []string{"/chat/completions", "/responses", "/completions"} {
 		if strings.HasSuffix(base, suffix) {
 			return strings.TrimSuffix(base, suffix) + "/models", nil
 		}

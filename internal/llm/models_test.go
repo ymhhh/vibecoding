@@ -13,7 +13,9 @@ func TestModelsURLDerivation(t *testing.T) {
 	}{
 		{"https://api.openai.com/v1/chat/completions", "https://api.openai.com/v1/models"},
 		{"https://api.deepseek.com/v1/chat/completions/", "https://api.deepseek.com/v1/models"},
-		{"http://llm-gw.jd.local/v1/completions", "http://llm-gw.jd.local/v1/models"},
+		{"https://api.openai.com/v1/completions", "https://api.openai.com/v1/models"},
+		{"https://api.openai.com/v1/responses", "https://api.openai.com/v1/models"},
+		{"https://api.openai.com/v1/responses/", "https://api.openai.com/v1/models"},
 		{"https://api.openai.com/v1/models", "https://api.openai.com/v1/models"},
 		{"https://gw.example.com/openai", "https://gw.example.com/openai/models"},
 		{"  https://api.openai.com/v1/chat/completions  ", "https://api.openai.com/v1/models"},

@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { ExecutorConfig, ExecutorProbe, ModelConfig } from '../types';
 import { testOpenAPIConnection, fetchAvailableModels } from '../lib/llm';
+import {
+  APIProtocol,
+  alignEndpointURLToProtocol,
+  endpointExamples,
+  endpointPlaceholder,
+  protocolFromEndpointURL,
+} from '../lib/apiProtocol';
 import { Language, ThemeStyle, getTranslation } from '../lib/i18n';
 import { THEME_CONFIGS } from '../lib/theme';
 import { api } from '../lib/api';
@@ -47,9 +54,20 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
   const [openAIApiKey, setOpenAIApiKey] = useState('');
   const [openAIModel, setOpenAIModel] = useState(config.openAIModel || 'gpt-4o');
   const [temperature, setTemperature] = useState(config.temperature ?? 0.7);
-  const [apiProtocol, setApiProtocol] = useState<'chat_completions' | 'responses'>(
+  const [apiProtocol, setApiProtocol] = useState<APIProtocol>(
     config.apiProtocol === 'responses' ? 'responses' : 'chat_completions'
   );
+
+  const setProtocolAligned = (next: APIProtocol) => {
+    setApiProtocol(next);
+    setOpenAIBaseUrl((prev) => alignEndpointURLToProtocol(prev, next));
+  };
+
+  const setBaseUrlAligned = (next: string) => {
+    setOpenAIBaseUrl(next);
+    const inferred = protocolFromEndpointURL(next);
+    if (inferred) setApiProtocol(inferred);
+  };
 
 
   const [testing, setTesting] = useState(false);
@@ -82,12 +100,9 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
   };
 
 
-  const protocolHint =
-    apiProtocol === 'responses'
-      ? lang === 'zh'
-        ? '填写完整 /responses 端点，例如 https://api.openai.com/v1/responses'
-        : 'Full /responses endpoint, e.g. https://api.openai.com/v1/responses'
-      : '';
+  const baseUrlHint =
+    apiProtocol === 'responses' ? t.baseUrlHintResponses : t.baseUrlHintChat;
+  const urlExamples = endpointExamples(apiProtocol);
 
   const [execType, setExecType] = useState<'llm' | 'agent'>('llm');
   const [execPreset, setExecPreset] = useState('claude');
@@ -254,7 +269,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
               <span>OpenAPI 参数配置</span>
             </div>
 
-            {/* Full chat completions URL */}
+            {/* Full endpoint URL */}
             <div>
               <label className={`block text-xs font-medium mb-1.5 ${themeConfig.textPrimary}`}>
                 {t.baseUrlLabel}
@@ -263,19 +278,22 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
                 <input
                   type="text"
                   value={openAIBaseUrl}
-                  onChange={(e) => setOpenAIBaseUrl(e.target.value)}
-                  placeholder="https://api.openai.com/v1/chat/completions"
+                  onChange={(e) => setBaseUrlAligned(e.target.value)}
+                  placeholder={endpointPlaceholder(apiProtocol)}
                   className={`w-full px-3.5 py-2.5 border rounded-xl focus:outline-none transition-colors font-mono text-xs ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
                 />
               </div>
               <p className={`text-[11px] mt-1 ${themeConfig.textMuted}`}>
+                {baseUrlHint}
+                <br />
                 {t.baseUrlHint}
                 <br />
-                例: <code className="font-semibold">https://api.openai.com/v1/chat/completions</code>
-                {' | '}
-                <code className="font-semibold">https://api.deepseek.com/v1/chat/completions</code>
-                {' | '}
-                <code className="font-semibold">http://llm-gw.jd.local/v1/chat/completions</code>
+                {urlExamples.map((ex, i) => (
+                  <React.Fragment key={ex}>
+                    {i > 0 ? ' | ' : null}
+                    <code className="font-semibold">{ex}</code>
+                  </React.Fragment>
+                ))}
               </p>
             </div>
 
@@ -285,15 +303,12 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
                 {t.apiProtocolLabel}
               </label>
               <div className="flex items-center gap-3">
-                <SelectField value={apiProtocol} onChange={(v) => setApiProtocol(v as 'chat_completions' | 'responses')}>
+                <SelectField value={apiProtocol} onChange={(v) => setProtocolAligned(v as APIProtocol)}>
                   <option value="chat_completions">Chat Completions</option>
                   <option value="responses">Responses</option>
                 </SelectField>
               </div>
               <p className={`text-[11px] mt-1 ${themeConfig.textMuted}`}>{t.apiProtocolHint}</p>
-              {protocolHint && (
-                <p className={`text-[11px] mt-0.5 font-mono ${themeConfig.textSecondary}`}>{protocolHint}</p>
-              )}
             </div>
 
             {/* API Key */}
