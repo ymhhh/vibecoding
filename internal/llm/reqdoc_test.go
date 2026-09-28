@@ -33,7 +33,7 @@ func TestParseReqDocJSON(t *testing.T) {
 func TestParseReqDocJSONTrailingCommaAndExtract(t *testing.T) {
 	raw := `{
 		"chatReply": "已整理需求",
-		"rawMarkdown": "# 孔明下发参数审计需求\n\n### 概述 / Summary\n\n审计记录\n",
+		"rawMarkdown": "# 订单导出需求\n\n### 概述 / Summary\n\n导出记录\n",
 	}`
 	doc, reply, err := ParseReqDocJSON(raw, "Fallback")
 	if err != nil {
@@ -42,7 +42,7 @@ func TestParseReqDocJSONTrailingCommaAndExtract(t *testing.T) {
 	if reply != "已整理需求" {
 		t.Fatalf("reply=%q", reply)
 	}
-	if !strings.Contains(doc.RawMarkdown, "# 孔明下发参数审计需求") {
+	if !strings.Contains(doc.RawMarkdown, "# 订单导出需求") {
 		t.Fatalf("md=%s", doc.RawMarkdown)
 	}
 	if strings.Contains(doc.RawMarkdown, `"rawMarkdown"`) {

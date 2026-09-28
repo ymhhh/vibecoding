@@ -7,7 +7,7 @@ import (
 
 func TestPromptDescriptionIncludesAttachmentText(t *testing.T) {
 	iss := &Issue{
-		Description: "融合孔明与计算智能",
+		Description: "支持将订单导出为 CSV",
 		Attachments: []IssueAttachment{
 			{Name: "prd.md", Kind: "text", Text: "# PRD\n方案一"},
 			{Name: "ui.png", Kind: "image"},
@@ -16,7 +16,7 @@ func TestPromptDescriptionIncludesAttachmentText(t *testing.T) {
 	}
 	got := iss.PromptDescription()
 	for _, want := range []string{
-		"融合孔明与计算智能",
+		"支持将订单导出为 CSV",
 		"----- Attached file: prd.md -----",
 		"# PRD\n方案一",
 		"[Attached image: ui.png]",

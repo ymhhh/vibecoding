@@ -16,7 +16,7 @@ func TestDeleteIssueRemovesRowAndJobs(t *testing.T) {
 	iss := model.Issue{
 		ID:        "ISSUE-2857",
 		ProjectID: "proj-1",
-		Title:     "孔明与计算智能融合",
+		Title:     "订单导出",
 		Status:    model.StatusBacklog,
 		CreatedAt: model.NowISO(),
 		UpdatedAt: model.NowISO(),
