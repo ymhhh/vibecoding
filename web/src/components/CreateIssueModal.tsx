@@ -7,6 +7,7 @@ import {
   formatFileSize,
   MAX_ISSUE_ATTACHMENTS,
 } from '../lib/attachments';
+import { pickAttachmentFiles } from '../lib/pickfiles';
 import { branchNameForIssue, normalizeIssueKind } from '../lib/issueKind';
 import { ThemedSelect } from './ThemedSelect';
 import { AttachmentPreview } from './AttachmentPreview';
@@ -90,6 +91,19 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
     },
     [attachments, lang]
   );
+
+  const browseFiles = useCallback(async () => {
+    try {
+      const picked = await pickAttachmentFiles();
+      if (picked.mode === 'browser') {
+        fileInputRef.current?.click();
+        return;
+      }
+      if (picked.files.length) void addFiles(picked.files);
+    } catch (err: unknown) {
+      setAttachErrors([err instanceof Error ? err.message : String(err)]);
+    }
+  }, [addFiles]);
 
   const removeAttachment = (id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
@@ -337,7 +351,7 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
                   />
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => void browseFiles()}
                     className={`w-full px-4 py-4 rounded-2xl border border-dashed text-sm flex items-center justify-center gap-2 transition-colors ${themeConfig.inputBg} ${themeConfig.inputBorder} ${themeConfig.textSecondary} hover:border-indigo-400 hover:text-indigo-500`}
                   >
                     <Upload className="w-4 h-4" />

@@ -22,7 +22,8 @@ export function isDesktopApp(): boolean {
   return (
     !!findBoundFn('WindowToggleMaximise') ||
     !!findBoundFn('SaveTextFile') ||
-    !!findBoundFn('SaveTextFileToDownloads')
+    !!findBoundFn('SaveTextFileToDownloads') ||
+    !!findBoundFn('OpenAttachmentFiles')
   );
 }
 

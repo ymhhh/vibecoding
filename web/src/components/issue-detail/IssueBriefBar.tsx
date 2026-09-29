@@ -7,6 +7,7 @@ import {
   formatFileSize,
   MAX_ISSUE_ATTACHMENTS,
 } from '../../lib/attachments';
+import { pickAttachmentFiles } from '../../lib/pickfiles';
 import { AttachmentPreview } from '../AttachmentPreview';
 import { ChevronDown, ChevronUp, Eye, File, FileText, Image as ImageIcon, Pencil, Upload, X } from 'lucide-react';
 
@@ -70,6 +71,19 @@ export const IssueBriefBar: React.FC<IssueBriefBarProps> = ({
     const { attachments: next, errors: nextErrors } = await filesToAttachments(files, attachments, lang);
     setAttachments(next);
     setErrors(nextErrors);
+  };
+
+  const browseFiles = async () => {
+    try {
+      const picked = await pickAttachmentFiles();
+      if (picked.mode === 'browser') {
+        fileInputRef.current?.click();
+        return;
+      }
+      if (picked.files.length) void addFiles(picked.files);
+    } catch (err: unknown) {
+      setErrors([err instanceof Error ? err.message : String(err)]);
+    }
   };
 
   const save = () => {
@@ -200,7 +214,7 @@ export const IssueBriefBar: React.FC<IssueBriefBarProps> = ({
                 </span>
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => void browseFiles()}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border flex items-center gap-1 ${themeConfig.btnSecondary} ${themeConfig.btnSecondaryText}`}
                 >
                   <Upload className="w-3 h-3" />
