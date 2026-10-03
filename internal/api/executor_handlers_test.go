@@ -406,7 +406,7 @@ func TestIssuePublishRemoteRejectedWhenInProgress(t *testing.T) {
 	srv, store := testServer(t)
 	issue := model.Issue{
 		ID: "i-pub2", Title: "t", Status: model.StatusInProgress,
-		PRInfo: &model.PRInfo{BranchName: "ai-dev/x", Worktrees: []model.WorktreeRef{{Path: t.TempDir()}}},
+		PRInfo:    &model.PRInfo{BranchName: "ai-dev/x", Worktrees: []model.WorktreeRef{{Path: t.TempDir()}}},
 		CreatedAt: model.NowISO(), UpdatedAt: model.NowISO(),
 	}
 	if err := store.UpsertIssue(issue); err != nil {
@@ -417,5 +417,159 @@ func TestIssuePublishRemoteRejectedWhenInProgress(t *testing.T) {
 	srv.Handler().ServeHTTP(rr, req)
 	if rr.Code != 400 {
 		t.Fatalf("status=%d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestMultiRepoReviewTargetsStaySeparate(t *testing.T) {
+	srv, store := testServer(t)
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	setup := func(extraBranch string) (repoDir, wt string) {
+		t.Helper()
+		repoDir = t.TempDir()
+		initRepo(t, repoDir, "main")
+		git(repoDir, "checkout", "-b", extraBranch)
+		git(repoDir, "checkout", "main")
+		wt = filepath.Join(t.TempDir(), "wt")
+		git(repoDir, "worktree", "add", "-b", "ai-dev/multi", wt, "main")
+		if err := os.WriteFile(filepath.Join(wt, "feat.txt"), []byte(extraBranch+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		git(wt, "add", ".")
+		git(wt, "commit", "-m", "feat")
+		return repoDir, wt
+	}
+	dirA, wtA := setup("release")
+	dirB, wtB := setup("develop")
+	proj := model.Project{
+		ID: "p1", Name: "p", CreatedAt: model.NowISO(), UpdatedAt: model.NowISO(),
+		GitRepos: []model.GitRepo{
+			{ID: "ra", Name: "alpha", Path: dirA, DefaultBranch: "main"},
+			{ID: "rb", Name: "beta", Path: dirB, DefaultBranch: "main"},
+		},
+	}
+	if err := store.UpsertProject(proj); err != nil {
+		t.Fatal(err)
+	}
+	issue := model.Issue{
+		ID: "i-multi", ProjectID: "p1", Title: "t", Status: model.StatusInReview,
+		AssociatedRepoIDs: []string{"ra", "rb"},
+		PRInfo: &model.PRInfo{
+			ID: "pr", BranchName: "ai-dev/multi", Title: "t", Status: "open",
+			BaseBranch: "main", Author: "bot", CreatedAt: model.NowISO(),
+			Worktrees: []model.WorktreeRef{
+				{RepoID: "ra", RepoName: "alpha", Path: wtA},
+				{RepoID: "rb", RepoName: "beta", Path: wtB},
+			},
+		},
+		CreatedAt: model.NowISO(), UpdatedAt: model.NowISO(),
+	}
+	if err := store.UpsertIssue(issue); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/issues/i-multi/branches", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("branches %d %s", rr.Code, rr.Body.String())
+	}
+	var branches struct {
+		Branches []string `json:"branches"`
+		Repos    []struct {
+			RepoID   string   `json:"repoId"`
+			Branches []string `json:"branches"`
+			Default  string   `json:"default"`
+		} `json:"repos"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &branches); err != nil {
+		t.Fatal(err)
+	}
+	if len(branches.Branches) != 0 {
+		t.Fatalf("multi-repo response should not union branches: %+v", branches.Branches)
+	}
+	if len(branches.Repos) != 2 {
+		t.Fatalf("repos=%+v", branches.Repos)
+	}
+	has := func(list []string, name string) bool {
+		for _, n := range list {
+			if n == name {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(branches.Repos[0].Branches, "release") || has(branches.Repos[0].Branches, "develop") {
+		t.Fatalf("alpha branches=%v", branches.Repos[0].Branches)
+	}
+	if !has(branches.Repos[1].Branches, "develop") || has(branches.Repos[1].Branches, "release") {
+		t.Fatalf("beta branches=%v", branches.Repos[1].Branches)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/issues/i-multi/diff?base=release&repoBase=ra:release&repoBase=rb:develop", nil)
+	rr = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("diff %d %s", rr.Code, rr.Body.String())
+	}
+	var diff struct {
+		Repos []struct {
+			RepoID     string `json:"repoId"`
+			BaseBranch string `json:"baseBranch"`
+			Error      string `json:"error"`
+		} `json:"repos"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &diff); err != nil {
+		t.Fatal(err)
+	}
+	gotBase := map[string]string{}
+	for _, r := range diff.Repos {
+		if r.Error != "" {
+			t.Fatalf("diff %s: %s", r.RepoID, r.Error)
+		}
+		gotBase[r.RepoID] = r.BaseBranch
+	}
+	if gotBase["ra"] != "release" || gotBase["rb"] != "develop" {
+		t.Fatalf("bases=%v", gotBase)
+	}
+
+	bad, _ := json.Marshal(map[string]any{
+		"targets": []map[string]string{{"repoId": "ra", "branch": "develop"}, {"repoId": "rb", "branch": "develop"}},
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/issues/i-multi/approve-merge", bytes.NewReader(bad))
+	rr = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != 400 || !strings.Contains(rr.Body.String(), "alpha") {
+		t.Fatalf("missing branch status=%d %s", rr.Code, rr.Body.String())
+	}
+	out, err := exec.Command("git", "-C", dirB, "show", "develop:feat.txt").CombinedOutput()
+	if err == nil {
+		t.Fatalf("beta should not have been merged: %s", out)
+	}
+
+	okBody, _ := json.Marshal(map[string]any{
+		"targets": []map[string]string{{"repoId": "ra", "branch": "release"}, {"repoId": "rb", "branch": "develop"}},
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/issues/i-multi/approve-merge", bytes.NewReader(okBody))
+	rr = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("approve %d %s", rr.Code, rr.Body.String())
+	}
+	for _, pair := range []struct{ dir, branch, want string }{
+		{dirA, "release", "release"},
+		{dirB, "develop", "develop"},
+	} {
+		out, err := exec.Command("git", "-C", pair.dir, "show", pair.branch+":feat.txt").CombinedOutput()
+		if err != nil || !strings.Contains(string(out), pair.want) {
+			t.Fatalf("%s %s: %v %s", pair.dir, pair.branch, err, out)
+		}
 	}
 }

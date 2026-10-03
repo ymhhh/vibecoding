@@ -26,11 +26,9 @@ interface IssueReviewTabProps {
   setReworkScope: React.Dispatch<React.SetStateAction<string>>;
   handleReworkSubmit: () => Promise<void>;
   handleReworkByComments: () => Promise<void>;
-  handleApproveMerge: () => Promise<void>;
+  handleApproveMerge: (targets: { repoId: string; branch: string }[]) => Promise<void>;
   handlePublishRemote: () => Promise<void>;
   publishingRemote?: boolean;
-  mergeTarget: string;
-  setMergeTarget: (v: string) => void;
   onCommentsChange: (comments: Issue['reviewComments']) => void;
 }
 
@@ -50,13 +48,13 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
   handleApproveMerge,
   handlePublishRemote,
   publishingRemote,
-  mergeTarget,
-  setMergeTarget,
   onCommentsChange,
 }) => {
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const t = getTranslation(lang);
-  const [branches, setBranches] = useState<string[]>([]);
+  type RepoBranches = { repoId: string; repoName: string; default?: string; branches: string[] };
+  const [repoBranches, setRepoBranches] = useState<RepoBranches[]>([]);
+  const [targets, setTargets] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -64,18 +62,38 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
       .listIssueBranches(issue.id)
       .then((res) => {
         if (cancelled) return;
-        const list = res.branches || [];
-        setBranches(list);
-        if (!mergeTarget) {
-          const next = res.default || list[0] || '';
-          if (next) setMergeTarget(next);
-        }
+        const repos: RepoBranches[] =
+          res.repos && res.repos.length > 0
+            ? res.repos
+            : [
+                {
+                  repoId: issue.associatedRepoIds?.[0] || '',
+                  repoName: '',
+                  default: res.default,
+                  branches: res.branches || [],
+                },
+              ];
+        setRepoBranches(repos);
+        setTargets((prev) => {
+          const next: Record<string, string> = {};
+          for (const repo of repos) {
+            if (!repo.repoId) continue;
+            next[repo.repoId] =
+              prev[repo.repoId] || repo.default || repo.branches[0] || issue.prInfo?.baseBranch || '';
+          }
+          return next;
+        });
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [issue.id]);
+
+  const multiRepo = repoBranches.filter((r) => r.repoId).length > 1;
+  const onlyRepo = repoBranches.length === 1 ? repoBranches[0] : undefined;
+  const onlyTarget = onlyRepo ? targets[onlyRepo.repoId] || onlyRepo.default || '' : '';
+  const branchOptions = Object.fromEntries(repoBranches.map((r) => [r.repoId, r.branches || []]));
 
   return (
     <div className="flex-1 p-6 overflow-y-auto space-y-6">
@@ -98,33 +116,37 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
             </span>
           </div>
           <div className={`text-xs mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 ${themeConfig.textMuted}`}>
-            <span className="inline-flex items-center gap-1.5">
-              {t.mergeInto}
-              {issue.status === 'in_review' && branches.length > 0 ? (
-                <span className="min-w-[10rem]">
-                  <ThemedSelect
-                    value={mergeTarget || issue.prInfo?.baseBranch || ''}
-                    onChange={(e) => setMergeTarget(e.target.value)}
-                    isLight={themeConfig.isLight}
-                    chevronClassName={themeConfig.textSecondary}
-                    className={`px-2 py-0.5 border rounded-md text-[11px] font-mono ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
-                  >
-                    {mergeTarget && !branches.includes(mergeTarget) ? (
-                      <option value={mergeTarget}>{mergeTarget}</option>
-                    ) : null}
-                    {branches.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </ThemedSelect>
-                </span>
-              ) : (
-                <code className="text-indigo-600 dark:text-indigo-300 font-mono">
-                  {mergeTarget || issue.prInfo?.baseBranch || '—'}
-                </code>
-              )}
-            </span>
+            {!multiRepo ? (
+              <span className="inline-flex items-center gap-1.5">
+                {t.mergeInto}
+                {issue.status === 'in_review' && onlyRepo && (onlyRepo.branches || []).length > 0 ? (
+                  <span className="min-w-[10rem]">
+                    <ThemedSelect
+                      value={onlyTarget || issue.prInfo?.baseBranch || ''}
+                      onChange={(e) =>
+                        setTargets((prev) => ({ ...prev, [onlyRepo.repoId]: e.target.value }))
+                      }
+                      isLight={themeConfig.isLight}
+                      chevronClassName={themeConfig.textSecondary}
+                      className={`px-2 py-0.5 border rounded-md text-[11px] font-mono ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
+                    >
+                      {onlyTarget && !(onlyRepo.branches || []).includes(onlyTarget) ? (
+                        <option value={onlyTarget}>{onlyTarget}</option>
+                      ) : null}
+                      {(onlyRepo.branches || []).map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </ThemedSelect>
+                  </span>
+                ) : (
+                  <code className="text-indigo-600 dark:text-indigo-300 font-mono">
+                    {onlyTarget || issue.prInfo?.baseBranch || '—'}
+                  </code>
+                )}
+              </span>
+            ) : null}
             <span>
               {lang === 'zh' ? '特性分支' : 'feature'}:{' '}
               <code className="text-indigo-600 dark:text-indigo-300 font-mono">
@@ -184,7 +206,16 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
               {publishingRemote ? t.publishingRemote : t.publishRemote}
             </button>
             <button
-              onClick={handleApproveMerge}
+              onClick={() =>
+                void handleApproveMerge(
+                  repoBranches
+                    .filter((r) => r.repoId)
+                    .map((r) => ({
+                      repoId: r.repoId,
+                      branch: targets[r.repoId] || r.default || issue.prInfo?.baseBranch || '',
+                    }))
+                )
+              }
               className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-lg flex items-center gap-1.5 transition-all"
             >
               <GitMerge className="w-4 h-4" />
@@ -201,7 +232,11 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
         lang={lang}
         canComment={issue.status === 'in_review'}
         canRebase={issue.status === 'in_review' || issue.status === 'backlog'}
-        compareBase={mergeTarget}
+        themeStyle={themeStyle}
+        compareBases={targets}
+        perRepoMerge={multiRepo && issue.status === 'in_review'}
+        branchOptions={branchOptions}
+        onMergeTargetChange={(repoId, branch) => setTargets((prev) => ({ ...prev, [repoId]: branch }))}
         onCommentsChange={onCommentsChange}
       />
 

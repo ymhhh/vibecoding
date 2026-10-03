@@ -78,7 +78,6 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
   const [exporting, setExporting] = useState(false);
   const [exportHint, setExportHint] = useState('');
   const [publishingRemote, setPublishingRemote] = useState(false);
-  const [mergeTarget, setMergeTarget] = useState(issue.prInfo?.baseBranch || '');
   const [dockEl, setDockEl] = useState<HTMLElement | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -126,7 +125,6 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
     setSelectedScope('all');
     setReworkScope('all');
     setExportHint('');
-    setMergeTarget(issue.prInfo?.baseBranch || '');
     if (issue.status === 'requirements') {
       setActiveTab('chat');
     } else if (issue.status === 'backlog') {
@@ -137,12 +135,6 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
       setActiveTab('review');
     }
   }, [issue.id]);
-
-  useEffect(() => {
-    if (issue.prInfo?.baseBranch) {
-      setMergeTarget((prev) => prev || issue.prInfo?.baseBranch || '');
-    }
-  }, [issue.id, issue.prInfo?.baseBranch]);
 
   useEffect(() => {
     const spec = visibleSpec(issue, selectedScope);
@@ -396,9 +388,12 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
     onStartAutoDev(issue.id, scope === 'all' ? undefined : scope);
   };
 
-  const handleApproveMerge = async () => {
+  const handleApproveMerge = async (targets: { repoId: string; branch: string }[]) => {
     try {
-      const saved = await api.approveMerge(issue.id, mergeTarget || undefined);
+      const saved = await api.approveMerge(issue.id, {
+        targets,
+        targetBranch: targets.length === 1 ? targets[0].branch : undefined,
+      });
       onUpdateIssue(saved);
     } catch (err: any) {
       setChatError(err.message || t.mergeFailed);
@@ -651,8 +646,6 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
               handleApproveMerge={handleApproveMerge}
               handlePublishRemote={handlePublishRemote}
               publishingRemote={publishingRemote}
-              mergeTarget={mergeTarget}
-              setMergeTarget={setMergeTarget}
               onCommentsChange={handleCommentsChange}
             />
           )}

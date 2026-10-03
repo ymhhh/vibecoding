@@ -101,32 +101,53 @@ func (s *Server) handleIssueDiff(w http.ResponseWriter, r *http.Request) {
 		Executor:   issue.PRInfo.Executor,
 		Quality:    issue.PRInfo.Quality,
 	}
-	if q := gitx.SanitizeBranchName(r.URL.Query().Get("base")); q != "" {
-		resp.BaseBranch = q
+	repoBases := parseRepoBases(r)
+	singleBase := ""
+	if len(issue.AssociatedRepoIDs) == 1 {
+		singleBase = gitx.SanitizeBranchName(r.URL.Query().Get("base"))
+		if singleBase != "" {
+			resp.BaseBranch = singleBase
+		}
 	}
 	for _, rid := range issue.AssociatedRepoIDs {
 		for _, gr := range proj.GitRepos {
 			if gr.ID != rid {
 				continue
 			}
-			base := gitx.SanitizeBranchName(r.URL.Query().Get("base"))
+			base := repoBases[gr.ID]
+			if base == "" {
+				base = singleBase
+			}
 			if base == "" {
 				base = issue.PRInfo.BaseBranch
 			}
 			if base == "" {
 				base = gr.DefaultBranch
 			}
-			stats, files, commits, ahead, behind, derr := gitx.DiffBetween(gr.Path, base, issue.PRInfo.BranchName)
 			rd := repoDiff{
 				RepoID:     gr.ID,
 				RepoName:   gr.Name,
 				BaseBranch: base,
-				Stats:      stats,
-				Ahead:      ahead,
-				Behind:     behind,
-				Files:      files,
-				Commits:    commits,
 			}
+			if base != "" {
+				ok, err := localBranchExists(gr.Path, base)
+				if err != nil {
+					rd.Error = err.Error()
+					resp.Repos = append(resp.Repos, rd)
+					continue
+				}
+				if !ok {
+					rd.Error = fmt.Sprintf("branch %q does not exist", base)
+					resp.Repos = append(resp.Repos, rd)
+					continue
+				}
+			}
+			stats, files, commits, ahead, behind, derr := gitx.DiffBetween(gr.Path, base, issue.PRInfo.BranchName)
+			rd.Stats = stats
+			rd.Ahead = ahead
+			rd.Behind = behind
+			rd.Files = files
+			rd.Commits = commits
 			if derr != nil {
 				rd.Error = derr.Error()
 			}
@@ -134,6 +155,35 @@ func (s *Server) handleIssueDiff(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 200, resp)
+}
+
+// parseRepoBases reads repeated repoBase=repoId:branch query values.
+// A value applies only to that repo.
+func parseRepoBases(r *http.Request) map[string]string {
+	out := map[string]string{}
+	for _, raw := range r.URL.Query()["repoBase"] {
+		repoID, branch, ok := strings.Cut(raw, ":")
+		repoID = strings.TrimSpace(repoID)
+		branch = gitx.SanitizeBranchName(branch)
+		if !ok || repoID == "" || branch == "" {
+			continue
+		}
+		out[repoID] = branch
+	}
+	return out
+}
+
+func localBranchExists(dir, name string) (bool, error) {
+	names, err := gitx.ListLocalBranches(dir)
+	if err != nil {
+		return false, err
+	}
+	for _, n := range names {
+		if n == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Server) handleIssueRebase(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +207,14 @@ func (s *Server) handleIssueRebase(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "no worktree available; run Auto-Dev first")
 		return
 	}
+	var body struct {
+		RepoID string `json:"repoId"`
+		Base   string `json:"base"`
+	}
+	_ = decodeJSON(r, &body)
 	base := strings.TrimSpace(issue.PRInfo.BaseBranch)
+	repoID := strings.TrimSpace(body.RepoID)
+	repoBase := gitx.SanitizeBranchName(body.Base)
 	type repoResult struct {
 		RepoID   string `json:"repoId"`
 		RepoName string `json:"repoName"`
@@ -166,14 +223,33 @@ func (s *Server) handleIssueRebase(w http.ResponseWriter, r *http.Request) {
 		Error    string `json:"error,omitempty"`
 	}
 	var results []repoResult
+	matched := repoID == ""
 	for _, wt := range issue.PRInfo.Worktrees {
+		if repoID != "" && wt.RepoID != repoID {
+			continue
+		}
+		matched = true
 		if st, err := os.Stat(wt.Path); err != nil || !st.IsDir() {
 			results = append(results, repoResult{RepoID: wt.RepoID, RepoName: wt.RepoName, Error: "worktree missing"})
 			continue
 		}
 		wtBase := base
+		if repoID != "" && repoBase != "" {
+			wtBase = repoBase
+		}
 		if wtBase == "" {
 			wtBase = "HEAD"
+		}
+		if wtBase != "HEAD" {
+			ok, err := localBranchExists(wt.Path, wtBase)
+			if err != nil {
+				writeErr(w, 400, fmt.Sprintf("%s: %v", wt.RepoName, err))
+				return
+			}
+			if !ok {
+				writeErr(w, 400, fmt.Sprintf("%s: branch %q does not exist", wt.RepoName, wtBase))
+				return
+			}
 		}
 		if err := gitx.RebaseOnto(wt.Path, wtBase); err != nil {
 			var conflict *gitx.RebaseConflictError
@@ -192,7 +268,15 @@ func (s *Server) handleIssueRebase(w http.ResponseWriter, r *http.Request) {
 		_, _, _, ahead, behind, _ := gitx.DiffBetween(wt.Path, wtBase, "HEAD")
 		results = append(results, repoResult{RepoID: wt.RepoID, RepoName: wt.RepoName, Ahead: ahead, Behind: behind})
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "baseBranch": base, "repos": results})
+	if !matched {
+		writeErr(w, 400, "repoId not found in worktrees")
+		return
+	}
+	respBase := base
+	if repoID != "" && repoBase != "" {
+		respBase = repoBase
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "baseBranch": respBase, "repos": results})
 }
 
 func (s *Server) handleIssuePublishRemote(w http.ResponseWriter, r *http.Request) {
@@ -377,11 +461,18 @@ func (s *Server) handleOpenEditor(w http.ResponseWriter, r *http.Request) {
 }
 
 // approveMergeSafe merges via MergeBranchAt and cleans worktrees.
-func (s *Server) approveMergeSafe(issue *model.Issue, repos []model.GitRepo, targetBranch string) error {
+// targets maps repo ID to that repo's merge branch. fallback is the legacy
+// single targetBranch, used only when a repo has no entry of its own.
+func (s *Server) approveMergeSafe(issue *model.Issue, repos []model.GitRepo, targets map[string]string, fallback string) error {
 	branch := issue.PRInfo.BranchName
-	mergedInto := ""
+	var merged []string
+	same := ""
+	allSame := true
 	for _, repo := range repos {
-		base := gitx.SanitizeBranchName(targetBranch)
+		base := gitx.SanitizeBranchName(targets[repo.ID])
+		if base == "" {
+			base = gitx.SanitizeBranchName(fallback)
+		}
 		if base == "" {
 			base = issue.PRInfo.BaseBranch
 		}
@@ -394,11 +485,21 @@ func (s *Server) approveMergeSafe(issue *model.Issue, repos []model.GitRepo, tar
 		if base == branch {
 			return fmt.Errorf("%s: cannot merge %s into itself", repo.Name, branch)
 		}
+		ok, err := localBranchExists(repo.Path, base)
+		if err != nil {
+			return fmt.Errorf("%s: %w", repo.Name, err)
+		}
+		if !ok {
+			return fmt.Errorf("%s: branch %q does not exist", repo.Name, base)
+		}
 		if err := gitx.MergeBranchAt(repo.Path, base, branch); err != nil {
 			return fmt.Errorf("%s: %w", repo.Name, err)
 		}
-		if mergedInto == "" {
-			mergedInto = base
+		merged = append(merged, repo.Name+":"+base)
+		if same == "" {
+			same = base
+		} else if same != base {
+			allSame = false
 		}
 	}
 	for _, wt := range issue.PRInfo.Worktrees {
@@ -410,14 +511,17 @@ func (s *Server) approveMergeSafe(issue *model.Issue, repos []model.GitRepo, tar
 	}
 	issue.PRInfo.Worktrees = nil
 	issue.PRInfo.Status = "merged"
-	if mergedInto != "" {
-		issue.PRInfo.BaseBranch = mergedInto
+	into := ""
+	if allSame && same != "" {
+		issue.PRInfo.BaseBranch = same
+		into = same
+	} else if len(merged) > 0 {
+		into = strings.Join(merged, ", ")
 	}
-	issue.Status = model.StatusCompleted
-	into := mergedInto
 	if into == "" {
 		into = "target branch"
 	}
+	issue.Status = model.StatusCompleted
 	issue.AutoDevLogs = append(issue.AutoDevLogs, model.AutoDevLog{
 		ID:        "log-" + uuid.NewString()[:8],
 		Timestamp: time.Now().Format("15:04:05"),
@@ -440,43 +544,58 @@ func (s *Server) handleIssueBranches(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "project not found")
 		return
 	}
-	seen := map[string]bool{}
-	var branches []string
-	def := ""
-	if issue.PRInfo != nil {
-		def = issue.PRInfo.BaseBranch
-	}
 	feature := ""
 	if issue.PRInfo != nil {
 		feature = issue.PRInfo.BranchName
 	}
+	type repoBranches struct {
+		RepoID   string   `json:"repoId"`
+		RepoName string   `json:"repoName"`
+		Default  string   `json:"default"`
+		Branches []string `json:"branches"`
+	}
+	var repos []repoBranches
 	for _, rid := range issue.AssociatedRepoIDs {
 		for _, gr := range proj.GitRepos {
 			if gr.ID != rid {
 				continue
-			}
-			if def == "" {
-				def = gr.DefaultBranch
 			}
 			names, err := gitx.ListLocalBranches(gr.Path)
 			if err != nil {
 				writeErr(w, 500, fmt.Sprintf("%s: %v", gr.Name, err))
 				return
 			}
+			var branches []string
 			for _, n := range names {
-				if n == feature || seen[n] {
+				if n == feature {
 					continue
 				}
-				seen[n] = true
 				branches = append(branches, n)
 			}
+			if branches == nil {
+				branches = []string{}
+			}
+			def := gr.DefaultBranch
+			if def == "" && issue.PRInfo != nil {
+				def = issue.PRInfo.BaseBranch
+			}
+			repos = append(repos, repoBranches{
+				RepoID:   gr.ID,
+				RepoName: gr.Name,
+				Default:  def,
+				Branches: branches,
+			})
 		}
 	}
-	writeJSON(w, 200, map[string]any{
-		"branches": branches,
-		"default":  def,
-		"feature":  feature,
-	})
+	resp := map[string]any{
+		"repos":   repos,
+		"feature": feature,
+	}
+	if len(repos) == 1 {
+		resp["branches"] = repos[0].Branches
+		resp["default"] = repos[0].Default
+	}
+	writeJSON(w, 200, resp)
 }
 
 func (s *Server) handleApproveMerge(w http.ResponseWriter, r *http.Request) {
@@ -492,8 +611,20 @@ func (s *Server) handleApproveMerge(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		TargetBranch string `json:"targetBranch"`
+		Targets      []struct {
+			RepoID string `json:"repoId"`
+			Branch string `json:"branch"`
+		} `json:"targets"`
 	}
 	_ = decodeJSON(r, &body)
+	targets := map[string]string{}
+	for _, t := range body.Targets {
+		id := strings.TrimSpace(t.RepoID)
+		br := gitx.SanitizeBranchName(t.Branch)
+		if id != "" && br != "" {
+			targets[id] = br
+		}
+	}
 	proj, err := s.Store.GetProject(issue.ProjectID)
 	if err != nil || proj == nil {
 		writeErr(w, 404, "project not found")
@@ -507,12 +638,15 @@ func (s *Server) handleApproveMerge(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if err := s.approveMergeSafe(issue, repos, body.TargetBranch); err != nil {
+	if err := s.approveMergeSafe(issue, repos, targets, body.TargetBranch); err != nil {
 		// Dirty default branch / merge conflicts surface as 409-ish client errors.
 		msg := err.Error()
 		status := 500
 		if strings.Contains(msg, "uncommitted changes") {
 			status = 409
+		}
+		if strings.Contains(msg, "does not exist") {
+			status = 400
 		}
 		writeErr(w, status, msg)
 		return

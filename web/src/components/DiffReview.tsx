@@ -1,19 +1,25 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileCode2, GitBranch, Loader2, MessageSquarePlus, SkipForward, Trash2, XCircle } from 'lucide-react';
 import { api } from '../lib/api';
 import { isCommentableDiffLine, parseUnifiedDiff, sumDiffStats } from '../lib/diffFormat';
 import { truncateQuote } from '../lib/reviewComments';
-import { Language, TRANSLATIONS } from '../lib/i18n';
-import { DiffComment, DiffFile, Issue, IssueDiff, QualityGate } from '../types';
+import { Language, ThemeStyle, TRANSLATIONS } from '../lib/i18n';
+import { THEME_CONFIGS } from '../lib/theme';
+import { DiffComment, DiffFile, Issue, IssueDiff, QualityGate, RepoDiff } from '../types';
+import { ThemedSelect } from './ThemedSelect';
 
 interface DiffReviewProps {
   issueId: string;
   issue?: Issue;
   lang?: Language;
+  themeStyle?: ThemeStyle;
   className?: string;
   canComment?: boolean;
   canRebase?: boolean;
-  compareBase?: string;
+  compareBases?: Record<string, string>;
+  perRepoMerge?: boolean;
+  branchOptions?: Record<string, string[]>;
+  onMergeTargetChange?: (repoId: string, branch: string) => void;
   onCommentsChange?: (comments: DiffComment[]) => void;
 }
 
@@ -69,48 +75,52 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
   issueId,
   issue,
   lang = 'zh' as Language,
+  themeStyle = 'light',
   className,
   canComment = false,
   canRebase = false,
-  compareBase,
+  compareBases,
+  perRepoMerge = false,
+  branchOptions,
+  onMergeTargetChange,
   onCommentsChange,
 }) => {
   const t = TRANSLATIONS[lang];
+  const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const [data, setData] = useState<IssueDiff | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<{ repoId: string; file: DiffFile } | null>(null);
+  const [openPath, setOpenPath] = useState<Record<string, string>>({});
+  const [focus, setFocus] = useState<{ repoId: string; path: string } | null>(null);
+  const focusRef = useRef(focus);
+  focusRef.current = focus;
   const [editorMsg, setEditorMsg] = useState('');
   const [anchor, setAnchor] = useState<number | null>(null);
   const [head, setHead] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState('');
-  const [rebasing, setRebasing] = useState(false);
+  const [rebasingRepo, setRebasingRepo] = useState('');
+  const basesKey = JSON.stringify(compareBases || {});
 
   const comments = issue?.reviewComments || [];
 
   const loadDiff = useCallback(() => {
     let cancelled = false;
-    setLoading(true);
     setError('');
     api
-      .getIssueDiff(issueId, compareBase || undefined)
+      .getIssueDiff(issueId, compareBases)
       .then((d) => {
         if (cancelled) return;
         setData(d);
-        setSelected((prev) => {
-          const stillThere =
-            prev &&
-            (d.repos || []).some(
-              (r) => r.repoId === prev.repoId && (r.files || []).some((f) => f.path === prev.file.path)
-            );
-          if (stillThere) return prev;
-          const firstRepo = d.repos?.[0];
-          const firstFile = firstRepo?.files?.[0];
-          if (firstRepo && firstFile) {
-            return { repoId: firstRepo.repoId, file: firstFile };
+        setOpenPath((prev) => {
+          const next = { ...prev };
+          for (const repo of d.repos || []) {
+            const files = repo.files || [];
+            if (!files.some((f) => f.path === next[repo.repoId])) {
+              next[repo.repoId] = files[0]?.path || '';
+            }
           }
-          return null;
+          return next;
         });
       })
       .catch((e: { message?: string }) => {
@@ -122,7 +132,7 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [issueId, compareBase]);
+  }, [issueId, basesKey]);
 
   useEffect(() => loadDiff(), [loadDiff]);
 
@@ -136,10 +146,9 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
     setAnchor(null);
     setHead(null);
     setDraft('');
-  }, [selected?.repoId, selected?.file.path]);
+  }, [focus?.repoId, focus?.path]);
 
   const totals = useMemo(() => sumDiffStats(data?.repos || []), [data]);
-  const patchLines = useMemo(() => parseUnifiedDiff(selected?.file.patch || ''), [selected]);
   const quality: QualityGate | undefined = data?.quality;
 
   const sel = useMemo(() => {
@@ -147,15 +156,12 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
     return { a: Math.min(anchor, head), b: Math.max(anchor, head) };
   }, [anchor, head]);
 
-  const fileComments = useMemo(
-    () =>
-      comments.filter(
-        (c) => selected && c.repoId === selected.repoId && c.path === selected.file.path
-      ),
-    [comments, selected]
+  const commentsFor = useCallback(
+    (repoId: string, path: string) => comments.filter((c) => c.repoId === repoId && c.path === path),
+    [comments]
   );
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className={`flex items-center gap-2 text-sm text-slate-500 ${className || ''}`}>
         <Loader2 className="w-4 h-4 animate-spin" />
@@ -163,7 +169,7 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
       </div>
     );
   }
-  if (error) {
+  if (error && !data) {
     return (
       <div className={`p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm ${className || ''}`}>
         <div className="flex items-center gap-2 font-semibold text-amber-800 dark:text-amber-200">
@@ -176,35 +182,36 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
   }
   if (!data) return null;
 
-  const empty = totals.filesChanged === 0;
-  const openEditor = async (app: 'cursor' | 'vscode') => {
+  const openEditor = async (app: 'cursor' | 'vscode', repoId: string) => {
     setEditorMsg('');
     try {
-      const res = await api.openEditor(issueId, app, selected?.repoId);
+      const res = await api.openEditor(issueId, app, repoId);
       setEditorMsg(`${app}: ${res.path}`);
     } catch (e: unknown) {
       setEditorMsg(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const maxBehind = Math.max(0, ...(data.repos || []).map((r) => r.behind || 0));
-  const doRebase = async () => {
-    setRebasing(true);
+  const doRebase = async (repo: RepoDiff) => {
+    setRebasingRepo(repo.repoId);
     setEditorMsg('');
     try {
-      await api.rebaseIssue(issueId);
+      await api.rebaseIssue(issueId, {
+        repoId: repo.repoId,
+        base: compareBases?.[repo.repoId] || repo.baseBranch,
+      });
       setEditorMsg(t.rebaseOk);
       loadDiff();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setEditorMsg(`${msg}. ${t.rebaseNeedEditor}`);
     } finally {
-      setRebasing(false);
+      setRebasingRepo('');
     }
   };
 
-  const pickLine = (i: number, extend: boolean) => {
-    if (!canComment || !isCommentableDiffLine(patchLines[i])) return;
+  const pickLine = (lines: ReturnType<typeof parseUnifiedDiff>, i: number, extend: boolean) => {
+    if (!canComment || !isCommentableDiffLine(lines[i])) return;
     if (!extend || anchor == null) {
       setAnchor(i);
       setHead(i);
@@ -213,8 +220,9 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
     setHead(i);
   };
 
-  const addComment = () => {
-    if (!sel || !selected || !onCommentsChange || !draft.trim()) return;
+  const addComment = (repoId: string, file: DiffFile, patchLines: ReturnType<typeof parseUnifiedDiff>) => {
+    if (!sel || !onCommentsChange || !draft.trim()) return;
+    if (!focus || focus.repoId !== repoId || focus.path !== file.path) return;
     const slice = patchLines.slice(sel.a, sel.b + 1).filter(isCommentableDiffLine);
     if (!slice.length) return;
     const first = slice[0];
@@ -225,8 +233,8 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
     if (!nums.length) return;
     const comment: DiffComment = {
       id: `cmt-${Date.now().toString(36)}`,
-      repoId: selected.repoId,
-      path: selected.file.path,
+      repoId,
+      path: file.path,
       side,
       startLine: Math.min(...nums),
       endLine: Math.max(...nums),
@@ -247,175 +255,227 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
 
   return (
     <div className={`space-y-4 ${className || ''}`}>
-      <div className="flex flex-wrap items-center gap-3 text-xs">
-        <span className="inline-flex items-center gap-1.5 font-mono">
-          <GitBranch className="w-3.5 h-3.5" />
-          {data.baseBranch || 'base'}…{data.branchName}
-        </span>
-        {data.executor ? (
+      {error ? (
+        <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-800 dark:text-amber-200">
+          {t.diffLoadFailed}: {error}
+        </div>
+      ) : null}
+      {data.executor ? (
+        <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className="px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
             {t.executorLabel}: {data.executor}
           </span>
-        ) : null}
-        <span className="font-mono text-emerald-600">+{totals.additions}</span>
-        <span className="font-mono text-rose-600">-{totals.deletions}</span>
-        <span className="text-slate-500">
-          {totals.filesChanged} {t.diffFiles}
-        </span>
-        {data.repos?.[0] ? (
-          <span className="text-slate-500">
-            ahead {data.repos[0].ahead} / behind {data.repos[0].behind}
-          </span>
-        ) : null}
-        {canRebase && maxBehind > 0 ? (
-          <button
-            type="button"
-            disabled={rebasing}
-            onClick={() => void doRebase()}
-            className="px-2 py-0.5 rounded border border-amber-500/40 text-amber-800 dark:text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
-          >
-            {rebasing ? t.rebasing : t.rebaseOnto.replace('{base}', data.baseBranch || 'base')}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => openEditor('cursor')}
-          className="px-2 py-0.5 rounded border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
-        >
-          {t.openInCursor}
-        </button>
-        <button
-          type="button"
-          onClick={() => openEditor('vscode')}
-          className="px-2 py-0.5 rounded border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
-        >
-          {t.openInVSCode}
-        </button>
-      </div>
+        </div>
+      ) : null}
       {editorMsg ? <p className="text-[11px] text-slate-500 font-mono">{editorMsg}</p> : null}
       {canComment ? <p className="text-[11px] text-slate-500">{t.diffCommentHint}</p> : null}
 
-      {empty ? <p className="text-xs text-slate-500">{t.diffEmpty}</p> : null}
-
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-3 min-h-[280px]">
-        <div className="border rounded-xl overflow-auto max-h-[420px] text-xs">
-          {(data.repos || []).map((repo) => (
-            <div key={repo.repoId} className="border-b last:border-b-0">
-              <div className="px-3 py-2 font-semibold bg-black/5 dark:bg-white/5 sticky top-0">
-                {repo.repoName}
-                {repo.error ? <span className="ml-2 text-rose-600 font-normal">{repo.error}</span> : null}
-              </div>
-              {(repo.files || []).map((f) => {
-                const active = selected?.repoId === repo.repoId && selected.file.path === f.path;
-                const n = comments.filter((c) => c.repoId === repo.repoId && c.path === f.path).length;
-                return (
-                  <button
-                    key={f.path}
-                    type="button"
-                    onClick={() => setSelected({ repoId: repo.repoId, file: f })}
-                    className={`w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-indigo-500/10 ${
-                      active ? 'bg-indigo-500/15' : ''
-                    }`}
-                  >
-                    <FileCode2 className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                    <span className="truncate font-mono">{f.path}</span>
-                    {n > 0 ? (
-                      <span className="text-[10px] px-1 rounded bg-amber-500/20 text-amber-800 dark:text-amber-200">{n}</span>
-                    ) : null}
-                    <span className="ml-auto font-mono text-[10px] text-slate-500">{f.status}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-        <div className="border rounded-xl overflow-hidden max-h-[420px] flex flex-col bg-black/[0.03] dark:bg-white/[0.03]">
-          <pre className="p-3 overflow-auto flex-1 text-[11px] font-mono leading-5 select-none">
-            {!selected?.file.patch ? (
-              <span className="text-slate-500">
-                {selected?.file.truncated
-                  ? lang === 'zh'
-                    ? '补丁过大，已截断（仅保留统计）'
-                    : 'Patch truncated (stats only)'
-                  : lang === 'zh'
-                    ? '选择左侧文件查看 unified diff'
-                    : 'Select a file to view unified diff'}
+      {(data.repos || []).map((repo) => {
+        const files = repo.files || [];
+        const path = openPath[repo.repoId] || '';
+        const file = files.find((f) => f.path === path) || null;
+        const patchLines = parseUnifiedDiff(file?.patch || '');
+        const focused = focus?.repoId === repo.repoId && focus?.path === file?.path;
+        const fileComments = file ? commentsFor(repo.repoId, file.path) : [];
+        const options = branchOptions?.[repo.repoId] || [];
+        const mergeValue = compareBases?.[repo.repoId] || repo.baseBranch || '';
+        const repoEmpty = files.length === 0;
+        return (
+          <section key={repo.repoId} className="space-y-3 rounded-xl border border-black/10 dark:border-white/10 p-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="font-semibold">{repo.repoName}</span>
+              <span className="inline-flex items-center gap-1.5 font-mono">
+                <GitBranch className="w-3.5 h-3.5" />
+                {repo.baseBranch || 'base'}…{data.branchName}
               </span>
-            ) : null}
-            {patchLines.map((l, i) => {
-              const active = sel && i >= sel.a && i <= sel.b && isCommentableDiffLine(l);
-              const num = lineNum(l);
-              const marked = fileComments.some((c) => {
-                const sideNum = c.side === 'old' ? l.oldLine : l.newLine;
-                return typeof sideNum === 'number' && sideNum >= c.startLine && sideNum <= c.endLine;
-              });
-              return (
-                <div
-                  key={i}
-                  onMouseDown={(e) => {
-                    if (!canComment) return;
-                    e.preventDefault();
-                    setDragging(true);
-                    pickLine(i, false);
-                  }}
-                  onMouseEnter={() => {
-                    if (dragging) pickLine(i, true);
-                  }}
-                  className={`flex gap-2 px-1 rounded ${
-                    l.kind === 'add'
-                      ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200'
-                      : l.kind === 'del'
-                        ? 'bg-rose-500/15 text-rose-800 dark:text-rose-200'
-                        : l.kind === 'hunk' || l.kind === 'meta'
-                          ? 'text-slate-500'
-                          : ''
-                  } ${active ? 'ring-1 ring-amber-400 bg-amber-400/20' : ''} ${
-                    canComment && isCommentableDiffLine(l) ? 'cursor-text' : ''
-                  } ${marked && !active ? 'border-l-2 border-amber-500' : ''}`}
-                >
-                  <span className="w-8 shrink-0 text-right text-slate-400 tabular-nums">
-                    {typeof num === 'number' ? num : ''}
+              <span className="font-mono text-emerald-600">+{repo.stats?.additions || 0}</span>
+              <span className="font-mono text-rose-600">-{repo.stats?.deletions || 0}</span>
+              <span className="text-slate-500">
+                {repo.stats?.filesChanged || 0} {t.diffFiles}
+              </span>
+              <span className="text-slate-500">
+                ahead {repo.ahead} / behind {repo.behind}
+              </span>
+              {repo.error ? <span className="text-rose-600">{repo.error}</span> : null}
+              {perRepoMerge && options.length > 0 ? (
+                <span className="inline-flex items-center gap-1.5">
+                  {t.mergeInto}
+                  <span className="min-w-[9rem]">
+                    <ThemedSelect
+                      value={mergeValue}
+                      onChange={(e) => onMergeTargetChange?.(repo.repoId, e.target.value)}
+                      isLight={themeConfig.isLight}
+                      chevronClassName={themeConfig.textSecondary}
+                      className="px-2 py-0.5 border rounded-md text-[11px] font-mono border-black/10 dark:border-white/10 bg-transparent"
+                    >
+                      {mergeValue && !options.includes(mergeValue) ? (
+                        <option value={mergeValue}>{mergeValue}</option>
+                      ) : null}
+                      {options.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </ThemedSelect>
                   </span>
-                  <span className="whitespace-pre-wrap break-all">{l.text || ' '}</span>
-                </div>
-              );
-            })}
-          </pre>
-          {canComment && sel ? (
-            <div className="border-t p-2 space-y-2 bg-amber-500/10">
-              <textarea
-                rows={2}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder={t.diffCommentPlaceholder}
-                className="w-full text-xs p-2 rounded-lg border border-amber-500/40 bg-white/80 dark:bg-black/30"
-              />
-              <div className="flex justify-end gap-2">
+                </span>
+              ) : null}
+              {canRebase && repo.behind > 0 ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setAnchor(null);
-                    setHead(null);
-                    setDraft('');
-                  }}
-                  className="px-2 py-1 text-[11px] rounded border border-black/10 dark:border-white/10"
+                  disabled={rebasingRepo === repo.repoId}
+                  onClick={() => void doRebase(repo)}
+                  className="px-2 py-0.5 rounded border border-amber-500/40 text-amber-800 dark:text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
                 >
-                  {t.cancel}
+                  {rebasingRepo === repo.repoId
+                    ? t.rebasing
+                    : t.rebaseOnto.replace('{base}', repo.baseBranch || 'base')}
                 </button>
-                <button
-                  type="button"
-                  disabled={!draft.trim()}
-                  onClick={addComment}
-                  className="px-3 py-1 text-[11px] rounded bg-amber-600 text-white disabled:opacity-40 flex items-center gap-1"
-                >
-                  <MessageSquarePlus className="w-3 h-3" />
-                  {t.diffCommentAdd}
-                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => openEditor('cursor', repo.repoId)}
+                className="px-2 py-0.5 rounded border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+              >
+                {t.openInCursor}
+              </button>
+              <button
+                type="button"
+                onClick={() => openEditor('vscode', repo.repoId)}
+                className="px-2 py-0.5 rounded border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+              >
+                {t.openInVSCode}
+              </button>
+            </div>
+            {repoEmpty ? <p className="text-xs text-slate-500">{t.diffEmpty}</p> : null}
+            <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-3 min-h-[220px]">
+              <div className="border rounded-xl overflow-auto max-h-[420px] text-xs">
+                {files.map((f) => {
+                  const active = f.path === file?.path;
+                  const n = comments.filter((c) => c.repoId === repo.repoId && c.path === f.path).length;
+                  return (
+                    <button
+                      key={f.path}
+                      type="button"
+                      onClick={() => {
+                        setOpenPath((prev) => ({ ...prev, [repo.repoId]: f.path }));
+                        setFocus({ repoId: repo.repoId, path: f.path });
+                      }}
+                      className={`w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-indigo-500/10 ${
+                        active ? 'bg-indigo-500/15' : ''
+                      }`}
+                    >
+                      <FileCode2 className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                      <span className="truncate font-mono">{f.path}</span>
+                      {n > 0 ? (
+                        <span className="text-[10px] px-1 rounded bg-amber-500/20 text-amber-800 dark:text-amber-200">{n}</span>
+                      ) : null}
+                      <span className="ml-auto font-mono text-[10px] text-slate-500">{f.status}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="border rounded-xl overflow-hidden max-h-[420px] flex flex-col bg-black/[0.03] dark:bg-white/[0.03]">
+                <pre className="p-3 overflow-auto flex-1 text-[11px] font-mono leading-5 select-none">
+                  {!file?.patch ? (
+                    <span className="text-slate-500">
+                      {file?.truncated
+                        ? lang === 'zh'
+                          ? '补丁过大，已截断（仅保留统计）'
+                          : 'Patch truncated (stats only)'
+                        : lang === 'zh'
+                          ? '选择左侧文件查看 unified diff'
+                          : 'Select a file to view unified diff'}
+                    </span>
+                  ) : null}
+                  {patchLines.map((l, i) => {
+                    const active = focused && sel && i >= sel.a && i <= sel.b && isCommentableDiffLine(l);
+                    const num = lineNum(l);
+                    const marked = fileComments.some((c) => {
+                      const sideNum = c.side === 'old' ? l.oldLine : l.newLine;
+                      return typeof sideNum === 'number' && sideNum >= c.startLine && sideNum <= c.endLine;
+                    });
+                    return (
+                      <div
+                        key={i}
+                        onMouseDown={(e) => {
+                          if (!canComment || !file) return;
+                          e.preventDefault();
+                          const next = { repoId: repo.repoId, path: file.path };
+                          focusRef.current = next;
+                          setFocus(next);
+                          setDragging(true);
+                          pickLine(patchLines, i, false);
+                        }}
+                        onMouseEnter={() => {
+                          const cur = focusRef.current;
+                          if (
+                            dragging &&
+                            file &&
+                            cur?.repoId === repo.repoId &&
+                            cur.path === file.path
+                          ) {
+                            pickLine(patchLines, i, true);
+                          }
+                        }}
+                        className={`flex gap-2 px-1 rounded ${
+                          l.kind === 'add'
+                            ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200'
+                            : l.kind === 'del'
+                              ? 'bg-rose-500/15 text-rose-800 dark:text-rose-200'
+                              : l.kind === 'hunk' || l.kind === 'meta'
+                                ? 'text-slate-500'
+                                : ''
+                        } ${active ? 'ring-1 ring-amber-400 bg-amber-400/20' : ''} ${
+                          canComment && isCommentableDiffLine(l) ? 'cursor-text' : ''
+                        } ${marked && !active ? 'border-l-2 border-amber-500' : ''}`}
+                      >
+                        <span className="w-8 shrink-0 text-right text-slate-400 tabular-nums">
+                          {typeof num === 'number' ? num : ''}
+                        </span>
+                        <span className="whitespace-pre-wrap break-all">{l.text || ' '}</span>
+                      </div>
+                    );
+                  })}
+                </pre>
+                {canComment && focused && sel && file ? (
+                  <div className="border-t p-2 space-y-2 bg-amber-500/10">
+                    <textarea
+                      rows={2}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder={t.diffCommentPlaceholder}
+                      className="w-full text-xs p-2 rounded-lg border border-amber-500/40 bg-white/80 dark:bg-black/30"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAnchor(null);
+                          setHead(null);
+                          setDraft('');
+                        }}
+                        className="px-2 py-1 text-[11px] rounded border border-black/10 dark:border-white/10"
+                      >
+                        {t.cancel}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!draft.trim()}
+                        onClick={() => addComment(repo.repoId, file, patchLines)}
+                        className="px-3 py-1 text-[11px] rounded bg-amber-600 text-white disabled:opacity-40 flex items-center gap-1"
+                      >
+                        <MessageSquarePlus className="w-3 h-3" />
+                        {t.diffCommentAdd}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
-          ) : null}
-        </div>
-      </div>
+          </section>
+        );
+      })}
 
       {comments.length > 0 ? (
         <div className="space-y-2">

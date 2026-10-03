@@ -187,16 +187,31 @@ export const api = {
     }),
   listExecutors: () =>
     request<{ executors: import('../types').ExecutorProbe[]; current: string }>('/api/executors'),
-  getIssueDiff: (id: string, base?: string) => {
-    const q = base ? `?base=${encodeURIComponent(base)}` : '';
-    return request<import('../types').IssueDiff>(`/api/issues/${id}/diff${q}`);
+  getIssueDiff: (id: string, bases?: Record<string, string>) => {
+    const q = new URLSearchParams();
+    const entries = Object.entries(bases || {}).filter(([, branch]) => branch);
+    if (entries.length === 1) {
+      q.set('base', entries[0][1]);
+      q.append('repoBase', `${entries[0][0]}:${entries[0][1]}`);
+    } else {
+      for (const [repoId, branch] of entries) {
+        q.append('repoBase', `${repoId}:${branch}`);
+      }
+    }
+    const qs = q.toString();
+    return request<import('../types').IssueDiff>(`/api/issues/${id}/diff${qs ? `?${qs}` : ''}`);
   },
   listIssueBranches: (id: string) =>
-    request<{ branches: string[]; default?: string; feature?: string }>(`/api/issues/${id}/branches`),
-  rebaseIssue: (id: string) =>
+    request<{
+      branches?: string[];
+      default?: string;
+      feature?: string;
+      repos?: { repoId: string; repoName: string; default?: string; branches: string[] }[];
+    }>(`/api/issues/${id}/branches`),
+  rebaseIssue: (id: string, body?: { repoId?: string; base?: string }) =>
     request<{ ok: boolean; baseBranch?: string; repos?: { repoId: string; ahead: number; behind: number; error?: string }[] }>(
       `/api/issues/${id}/rebase`,
-      { method: 'POST', body: '{}' }
+      { method: 'POST', body: JSON.stringify(body || {}) }
     ),
   publishRemote: (id: string) =>
     request<{ ok: boolean; pushed?: number; prUrl?: string; warnings?: string[]; error?: string; issue?: Issue }>(
@@ -229,10 +244,13 @@ export const api = {
     request<Issue>(`/api/issues/${id}`, { method: 'PUT', body: JSON.stringify(issue) }),
   deleteIssue: (id: string) =>
     request<{ ok: boolean }>(`/api/issues/${id}`, { method: 'DELETE' }),
-  approveMerge: (id: string, targetBranch?: string) =>
+  approveMerge: (
+    id: string,
+    body?: { targetBranch?: string; targets?: { repoId: string; branch: string }[] }
+  ) =>
     request<Issue>(`/api/issues/${id}/approve-merge`, {
       method: 'POST',
-      body: JSON.stringify(targetBranch ? { targetBranch } : {}),
+      body: JSON.stringify(body || {}),
     }),
 
   validateRepo: (path: string) =>
