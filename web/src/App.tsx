@@ -11,12 +11,14 @@ import { ProjectModal } from './components/ProjectModal';
 import { CreateIssueModal } from './components/CreateIssueModal';
 import { GlobalSettingsModal } from './components/GlobalSettingsModal';
 import { StartAutoDevModal } from './components/StartAutoDevModal';
+import { CommandPalette, isMac } from './components/CommandPalette';
+import { ActivityTimeline } from './components/ActivityTimeline';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import {
   FolderKanban,
   Settings,
   Plus,
   Sliders,
-  ChevronRight,
   Globe,
   Palette,
   Check,
@@ -25,10 +27,30 @@ import {
   X,
   Maximize2,
   Trash2,
+  Command,
+  Sparkles,
+  Activity,
+  ChevronDown,
 } from 'lucide-react';
 import { isDesktopApp, toggleDesktopMaximize } from './lib/desktop';
 
 const LOGO_MARK = '/logo-mark.png';
+
+const PROJECT_GRADIENTS = [
+  'from-indigo-500 to-violet-600',
+  'from-cyan-500 to-blue-600',
+  'from-emerald-500 to-teal-600',
+  'from-amber-500 to-orange-600',
+  'from-rose-500 to-pink-600',
+  'from-fuchsia-500 to-purple-600',
+];
+
+function getProjectInitials(name: string): string {
+  const parts = name.trim().split(/[\s\-_]+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
 
 const DEFAULT_MODEL: ModelConfig = {
   useCustomOpenAI: true,
@@ -63,12 +85,18 @@ export default function App() {
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
   const [startPick, setStartPick] = useState<{ issueId: string; subRequirementId?: string } | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
 
   const autoDevJobs = useRef<Map<string, string>>(new Map()); // issueId -> jobId
   const unsubscribers = useRef<Map<string, () => void>>(new Map());
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
 
   const t = getTranslation(language);
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
+  const isLight = themeConfig.isLight;
 
   const showToast = useCallback((type: 'error' | 'info' | 'success', text: string) => {
     setToast({ type, text });
@@ -188,6 +216,21 @@ export default function App() {
 
   const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0];
   const activeIssues = issues.filter((i) => i.projectId === activeProject?.id);
+
+  useEffect(() => {
+    if (!isProjectDropdownOpen && !isThemeMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (isProjectDropdownOpen && projectDropdownRef.current && !projectDropdownRef.current.contains(target)) {
+        setIsProjectDropdownOpen(false);
+      }
+      if (isThemeMenuOpen && themeMenuRef.current && !themeMenuRef.current.contains(target)) {
+        setIsThemeMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [isProjectDropdownOpen, isThemeMenuOpen]);
 
   useEffect(() => {
     if (!activeProjectId) return;
@@ -496,6 +539,21 @@ export default function App() {
     [selectedIssueId, busyIssueIds, minimizedIssueIds]
   );
 
+  useKeyboardShortcuts({
+    onToggleCommandPalette: () => setIsCommandPaletteOpen((v) => !v),
+    onToggleActivity: () => setIsActivityOpen((v) => !v),
+    onCreateIssue: () => {
+      if (activeProject) setIsCreateIssueModalOpen(true);
+    },
+    onOpenSettings: () => setIsGlobalSettingsOpen(true),
+    onRefresh: () => {
+      if (activeProjectId) {
+        refreshIssues(activeProjectId).catch((err) => showToast('error', err.message));
+      }
+    },
+    isPaletteOpen: isCommandPaletteOpen,
+  });
+
   const minimizeIssue = useCallback((issueId: string) => {
     setSelectedIssueId((prev) => (prev === issueId ? null : prev));
     setMinimizedIssueIds((ids) => (ids.includes(issueId) ? ids : [...ids, issueId]));
@@ -571,250 +629,400 @@ export default function App() {
         </div>
       )}
 
-      <aside className={`w-64 border-r flex flex-col justify-between shrink-0 z-20 ${themeConfig.sidebarBg} transition-colors duration-300`}>
-        <div>
-          <div className={`p-6 flex items-center justify-between border-b ${themeConfig.subtleBorder} ${themeConfig.modalHeaderBg}`}>
-            <div className="flex items-center space-x-3 min-w-0">
-              <img
-                src={LOGO_MARK}
-                alt="Vibecoding"
-                className="w-9 h-9 object-contain shrink-0"
-              />
-              <div className="min-w-0">
-                <span className={`text-base font-bold tracking-tight block ${themeConfig.textPrimary}`}>Vibecoding</span>
-                <span className={`text-[10px] uppercase tracking-widest font-mono ${themeConfig.textMuted}`}>
-                  {t.subtitle}
-                </span>
-              </div>
-            </div>
+      <aside
+        className={`w-16 border-r flex flex-col items-center py-3.5 justify-between shrink-0 z-40 overflow-visible ${themeConfig.sidebarBg} transition-colors duration-300`}
+      >
+        <div className="flex flex-col items-center gap-3 w-full">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center p-1.5 transition-transform hover:scale-105 cursor-pointer"
+            title="Vibecoding Dashboard"
+          >
+            <img src={LOGO_MARK} alt="Vibecoding" className="w-full h-full object-contain" />
           </div>
-
-          <nav className="p-4 space-y-6">
-            <div>
-              <div className={`flex items-center justify-between text-[10px] uppercase tracking-widest font-bold mb-3 px-2 ${themeConfig.textMuted}`}>
-                <span>{t.workspaceProjects}</span>
-                <button
-                  onClick={() => {
-                    setEditingProject(null);
-                    setIsProjectModalOpen(true);
-                  }}
-                  className={`p-1 rounded transition-colors ${themeConfig.sidebarItemHover}`}
-                  title={t.newProject}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                {projects.length === 0 && (
-                  <div className={`text-xs px-2 py-3 ${themeConfig.textMuted}`}>
-                    {t.noProjectsYet}
-                  </div>
-                )}
-                {projects.map((proj) => {
-                  const isActive = proj.id === activeProject?.id;
-                  const confirmingDelete = deletingProjectId === proj.id;
-                  return (
-                    <div
-                      key={proj.id}
-                      onClick={() => {
-                        setDeletingProjectId(null);
-                        setActiveProjectId(proj.id);
-                      }}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-1 group ${
-                        isActive ? themeConfig.sidebarItemActive : themeConfig.sidebarItemHover
+          <div className={`w-8 h-px ${themeConfig.subtleBorder} border-t`} />
+          <div className="flex flex-col items-center gap-1 w-full px-1.5 py-0.5 max-h-[calc(100vh-220px)] overflow-y-auto no-scrollbar">
+            {projects.map((proj, idx) => {
+              const isActive = proj.id === activeProject?.id;
+              const initials = getProjectInitials(proj.name);
+              const gradient = PROJECT_GRADIENTS[idx % PROJECT_GRADIENTS.length];
+              return (
+                <div key={proj.id} className="relative group flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeletingProjectId(null);
+                      setActiveProjectId(proj.id);
+                    }}
+                    title={`${proj.name} (${issueCounts[proj.id] || 0} issues)`}
+                    className={`relative w-11 h-11 rounded-2xl flex items-center justify-center transition-colors outline-none ${
+                      isActive
+                        ? isLight
+                          ? 'bg-indigo-50'
+                          : 'bg-indigo-500/20'
+                        : isLight
+                          ? 'hover:bg-slate-200/80'
+                          : 'hover:bg-white/8'
+                    }`}
+                  >
+                    <span
+                      className={`w-8 h-8 rounded-[10px] font-bold text-[11px] flex items-center justify-center text-white shadow-sm bg-gradient-to-br ${gradient} ${
+                        isActive ? 'shadow-indigo-500/35' : 'opacity-80 group-hover:opacity-100'
                       }`}
                     >
-                      <div className="flex items-center space-x-2.5 overflow-hidden min-w-0">
-                        <div className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-indigo-400/50'}`} />
-                        <span className="text-xs font-medium truncate">{proj.name}</span>
-                      </div>
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        {!confirmingDelete && (
-                          <span
-                            className={`text-[10px] font-mono ${themeConfig.textMuted}`}
-                            title={t.projectIssueCount.replace('{n}', String(issueCounts[proj.id] || 0))}
-                          >
-                            {issueCounts[proj.id] || 0}
-                          </span>
-                        )}
-                        {!confirmingDelete && (
-                          <button
-                            type="button"
-                            title={t.projectSettings}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeletingProjectId(null);
-                              setActiveProjectId(proj.id);
-                              setEditingProject(proj);
-                              setIsProjectModalOpen(true);
+                      {initials}
+                    </span>
+                    {isActive && (
+                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-3.5 h-0.5 rounded-full bg-indigo-500" />
+                    )}
+                  </button>
+                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 hidden group-hover:flex z-[80] pointer-events-none px-2.5 py-1.5 rounded-lg bg-slate-900 border border-white/10 text-white text-xs whitespace-nowrap shadow-xl items-center gap-2">
+                    <span className="font-semibold">{proj.name}</span>
+                    <span className="text-slate-400 text-[10px]">({issueCounts[proj.id] || 0})</span>
+                  </div>
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => {
+                setEditingProject(null);
+                setIsProjectModalOpen(true);
+              }}
+              title={t.newProject}
+              className={`w-10 h-10 rounded-xl border border-dashed flex items-center justify-center transition-all ${
+                isLight
+                  ? 'border-slate-300 text-slate-500 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50'
+                  : 'border-white/20 text-slate-400 hover:border-indigo-400 hover:text-indigo-400 hover:bg-white/5'
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-2.5 w-full pt-2">
+          <button
+            type="button"
+            onClick={() => setIsCommandPaletteOpen(true)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center relative transition-colors ${
+              isLight
+                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                : 'text-slate-400 hover:text-white hover:bg-white/10'
+            }`}
+            title={`${language === 'zh' ? '全局命令面板' : 'Command Palette'} (${isMac ? '⌘K' : 'Ctrl+K'})`}
+          >
+            <Command className="w-4 h-4 text-indigo-400" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsGlobalSettingsOpen(true)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center relative transition-colors ${
+              isLight
+                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                : 'text-slate-400 hover:text-white hover:bg-white/10'
+            }`}
+            title={t.globalLLMConfig}
+          >
+            <Sliders className="w-4 h-4" />
+            <div
+              className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full border ${
+                effectiveLlmReady
+                  ? isLight
+                    ? 'bg-emerald-500 border-white'
+                    : 'bg-emerald-400 border-slate-950'
+                  : isLight
+                    ? 'bg-amber-500 border-white'
+                    : 'bg-amber-400 border-slate-950'
+              }`}
+            />
+          </button>
+          <div className="relative" ref={themeMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                isLight
+                  ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                  : 'text-slate-400 hover:text-white hover:bg-white/10'
+              }`}
+              title={t.switchThemeHint}
+            >
+              <Palette className="w-4 h-4 text-purple-400" />
+            </button>
+            {isThemeMenuOpen && (
+                <div
+                  className={`absolute left-12 bottom-0 w-44 border rounded-xl shadow-2xl p-2 z-[80] flex flex-col gap-1 ${themeConfig.modalBg}`}
+                >
+                  <div className={`text-[10px] font-bold uppercase px-2 py-1 tracking-wider ${themeConfig.textMuted}`}>
+                    {t.themeSelection}
+                  </div>
+                  {(Object.keys(THEME_CONFIGS) as ThemeStyle[]).map((key) => {
+                    const cfg = THEME_CONFIGS[key];
+                    const isSelected = key === themeStyle;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => {
+                          setThemeStyle(key);
+                          setIsThemeMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-between transition-colors ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                            : `${themeConfig.textSecondary} hover:bg-black/5 dark:hover:bg-white/10`
+                        }`}
+                      >
+                        <span>{language === 'zh' ? cfg.nameZh : cfg.nameEn}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                      </button>
+                    );
+                  })}
+                </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setLanguage((l) => (l === 'en' ? 'zh' : 'en'))}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              isLight
+                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                : 'text-slate-400 hover:text-white hover:bg-white/10'
+            }`}
+            title={t.switchLanguageHint}
+          >
+            <Globe className="w-4 h-4 text-cyan-400" />
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 flex flex-col bg-transparent min-w-0">
+        <header
+          className={`dashboard-header relative z-20 border-b flex items-center justify-between shrink-0 min-w-0 ${themeConfig.headerBg} transition-colors duration-300 overflow-visible`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="relative z-50" ref={projectDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsProjectDropdownOpen((v) => !v)}
+                className={`dashboard-project-btn rounded-xl border flex items-center gap-2 font-semibold transition-all ${
+                  isLight
+                    ? 'bg-white border-slate-300 text-slate-800 hover:border-indigo-400'
+                    : 'bg-slate-900/70 border-white/15 text-slate-100 hover:border-indigo-400/60'
+                }`}
+              >
+                <FolderKanban className="w-4 h-4 text-indigo-500 shrink-0" />
+                <span className="truncate max-w-[clamp(100px,18vw,240px)]">
+                  {activeProject?.name || t.workspaceFallback}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 opacity-60 shrink-0" />
+              </button>
+              {isProjectDropdownOpen && (
+                  <div
+                    className={`absolute left-0 top-full mt-2 w-72 border rounded-xl shadow-2xl p-2 z-[80] flex flex-col gap-1.5 ${themeConfig.modalBg}`}
+                  >
+                    <div className="flex items-center justify-between px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <span>{t.workspaceProjects}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProjectDropdownOpen(false);
+                          setEditingProject(null);
+                          setIsProjectModalOpen(true);
+                        }}
+                        className="text-indigo-400 hover:text-indigo-300 flex items-center gap-0.5"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>{t.newProject}</span>
+                      </button>
+                    </div>
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      {projects.map((p) => {
+                        const isActive = p.id === activeProject?.id;
+                        return (
+                          <div
+                            key={p.id}
+                            onClick={() => {
+                              setActiveProjectId(p.id);
+                              setIsProjectDropdownOpen(false);
                             }}
-                            className={`p-1 rounded-lg transition-opacity ${
-                              isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
-                            } ${themeConfig.textMuted} hover:text-indigo-500 hover:bg-black/5 dark:hover:bg-white/10`}
+                            className={`p-2 rounded-lg text-xs cursor-pointer flex items-center justify-between transition-colors ${
+                              isActive
+                                ? 'bg-indigo-600 text-white font-semibold'
+                                : `${themeConfig.textSecondary} hover:bg-black/5 dark:hover:bg-white/10`
+                            }`}
                           >
-                            <Settings className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {confirmingDelete ? (
-                          <>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-5 h-5 rounded bg-white/20 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                {getProjectInitials(p.name)}
+                              </div>
+                              <span className="truncate">{p.name}</span>
+                            </div>
+                            <span className="font-mono text-[10px] opacity-70 shrink-0">
+                              {issueCounts[p.id] || 0}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {activeProject && (
+                      <div className={`pt-2 border-t flex items-center justify-between px-1 ${themeConfig.subtleBorder}`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsProjectDropdownOpen(false);
+                            setEditingProject(activeProject);
+                            setIsProjectModalOpen(true);
+                          }}
+                          className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                          <span>{t.projectSettings}</span>
+                        </button>
+                        {deletingProjectId === activeProject.id ? (
+                          <div className="flex items-center gap-1">
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeletingProjectId(null);
-                              }}
-                              className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold ${themeConfig.textSecondary} hover:bg-black/5 dark:hover:bg-white/10`}
+                              onClick={() => setDeletingProjectId(null)}
+                              className={`px-2 py-0.5 rounded text-[10px] ${themeConfig.textSecondary}`}
                             >
                               {t.cancel}
                             </button>
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleDeleteProject(proj.id);
-                              }}
-                              className="px-2 py-0.5 rounded-lg text-[10px] font-bold text-white bg-rose-500 hover:bg-rose-600"
-                              title={t.confirmDeleteProject.replace('{name}', proj.name)}
+                              onClick={() => void handleDeleteProject(activeProject.id)}
+                              className="px-2 py-0.5 rounded text-[10px] font-bold text-white bg-rose-500"
                             >
                               {t.confirm}
                             </button>
-                          </>
+                          </div>
                         ) : (
                           <button
                             type="button"
-                            title={t.deleteProject}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setDeletingProjectId(proj.id);
-                            }}
-                            className={`p-1 rounded-lg transition-opacity ${
-                              isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
-                            } text-rose-400/80 hover:text-rose-500 hover:bg-rose-500/10`}
+                            onClick={() => setDeletingProjectId(activeProject.id)}
+                            className="text-xs text-rose-400 hover:text-rose-300 font-medium flex items-center gap-1"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
+                            <span>{t.deleteProject}</span>
                           </button>
                         )}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className={`pt-2 border-t space-y-2 ${themeConfig.subtleBorder}`}>
-              <div className={`text-[10px] uppercase tracking-widest font-bold mb-2.5 px-2 ${themeConfig.textMuted}`}>
-                {t.systemSettings}
-              </div>
-              <button
-                onClick={() => setIsGlobalSettingsOpen(true)}
-                className={`w-full p-3 rounded-xl transition-colors flex items-center justify-between border border-transparent ${themeConfig.sidebarItemHover}`}
-              >
-                <div className="flex items-center space-x-2.5">
-                  <Sliders className="w-4 h-4 text-indigo-500" />
-                  <span className="text-xs font-medium">{t.globalLLMConfig}</span>
-                </div>
-                <ChevronRight className={`w-3.5 h-3.5 ${themeConfig.textMuted}`} />
-              </button>
-            </div>
-          </nav>
-        </div>
-
-        <div className={`p-4 border-t ${themeConfig.subtleBorder} ${themeConfig.modalHeaderBg}`}>
-          <div
-            className={`rounded-xl p-3 flex items-center space-x-2.5 border ${
-              effectiveLlmReady
-                ? 'bg-emerald-500/10 border-emerald-500/30'
-                : 'bg-amber-500/10 border-amber-500/30'
-            }`}
-          >
-            <div className={`w-2 h-2 rounded-full shrink-0 ${effectiveLlmReady ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-            <div className="overflow-hidden">
-              <div
-                className={`text-[10px] font-mono font-semibold truncate uppercase ${
-                  effectiveLlmReady ? 'text-emerald-600 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'
-                }`}
-              >
-                {effectiveLlmReady
-                  ? `${t.openaiPrefix}: ${effectiveModelConfig.openAIModel || t.customModel}`
-                  : t.llmNotConfigured}
-              </div>
-              <div className={`text-[9px] truncate ${themeConfig.textMuted}`}>
-                {effectiveLlmReady
-                  ? effectiveModelConfig.keyHint || effectiveModelConfig.openAIBaseUrl || t.llmReady
-                  : t.openSettingsAddKey}
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <main className="flex-1 flex flex-col overflow-hidden bg-transparent">
-        <header className={`relative z-30 h-16 border-b px-8 flex items-center justify-between shrink-0 ${themeConfig.headerBg} transition-colors duration-300`}>
-          <div className="flex items-center space-x-4">
-            <h2 className={`text-lg font-bold tracking-tight flex items-center gap-2 ${themeConfig.textPrimary}`}>
-              <FolderKanban className="w-5 h-5 text-indigo-500" />
-              {activeProject?.name || t.workspaceFallback}
-            </h2>
-            <span className={themeConfig.textMuted}>/</span>
-            <p className={`text-xs max-w-md truncate ${themeConfig.textSecondary}`}>
-              {activeProject?.description || t.workspaceHint}
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setLanguage((l) => (l === 'en' ? 'zh' : 'en'))}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${themeConfig.btnSecondary} ${themeConfig.btnSecondaryText}`}
-              title={t.switchLanguageHint}
-            >
-              <Globe className="w-3.5 h-3.5 text-cyan-500" />
-              <span>{language === 'en' ? 'English' : '简体中文'}</span>
-            </button>
-
-            <div className="relative z-50">
-              <button
-                onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${themeConfig.btnSecondary} ${themeConfig.btnSecondaryText}`}
-                title={t.switchThemeHint}
-              >
-                <Palette className="w-3.5 h-3.5 text-purple-500" />
-                <span>{language === 'zh' ? themeConfig.nameZh : themeConfig.nameEn}</span>
-              </button>
-              {isThemeMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setIsThemeMenuOpen(false)} />
-                  <div className={`absolute right-0 mt-2 w-48 border rounded-xl shadow-2xl p-2 z-50 flex flex-col gap-1 ${themeConfig.modalBg}`}>
-                    <div className={`text-[10px] font-bold uppercase px-2 py-1 tracking-wider ${themeConfig.textMuted}`}>
-                      {t.themeSelection}
-                    </div>
-                    {(Object.keys(THEME_CONFIGS) as ThemeStyle[]).map((key) => {
-                      const cfg = THEME_CONFIGS[key];
-                      const isSelected = key === themeStyle;
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => {
-                            setThemeStyle(key);
-                            setIsThemeMenuOpen(false);
-                          }}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-colors ${
-                            isSelected
-                              ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                              : `${themeConfig.textSecondary} hover:${themeConfig.textPrimary} hover:bg-black/5 dark:hover:bg-white/10`
-                          }`}
-                        >
-                          <span>{language === 'zh' ? cfg.nameZh : cfg.nameEn}</span>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                        </button>
-                      );
-                    })}
+                    )}
                   </div>
-                </>
               )}
             </div>
 
+            {activeProject && (
+              <div
+                className={`collapse-on-compact flex items-center gap-2 text-xs no-squeeze ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}
+              >
+                <span>·</span>
+                <span
+                  className={`font-mono font-bold px-1.5 py-0.5 rounded border no-squeeze ${
+                    isLight ? 'bg-slate-100 text-slate-800 border-slate-300' : 'bg-white/10 text-slate-200 border-white/10'
+                  }`}
+                >
+                  {(activeProject.gitRepos || []).length}
+                </span>
+                <span className="no-squeeze">{language === 'zh' ? '个本地工程' : 'repos'}</span>
+                <span>·</span>
+                <span
+                  className={`font-mono font-bold px-1.5 py-0.5 rounded border no-squeeze ${
+                    isLight ? 'bg-slate-100 text-slate-800 border-slate-300' : 'bg-white/10 text-slate-200 border-white/10'
+                  }`}
+                >
+                  {activeIssues.length}
+                </span>
+                <span className="no-squeeze">{language === 'zh' ? '个需求' : 'issues'}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 no-squeeze">
+            <button
+              type="button"
+              onClick={() => setIsActivityOpen((v) => !v)}
+              className={`header-action-btn rounded-xl font-medium border flex items-center gap-1.5 transition-all shadow-2xs ${
+                isActivityOpen
+                  ? 'bg-indigo-600 text-white border-indigo-500'
+                  : isLight
+                    ? 'bg-slate-100/90 hover:bg-slate-200/90 border-slate-300 text-slate-700'
+                    : 'bg-slate-900/80 hover:bg-slate-800 border-white/15 text-slate-300'
+              }`}
+              title={`${language === 'zh' ? '活动时间线' : 'Activity Timeline'} (${isMac ? '⌘J' : 'Ctrl+J'})`}
+            >
+              <Activity className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden xl:inline fluid-text-xs font-medium">
+                {language === 'zh' ? '动态' : 'Activity'}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className={`header-action-btn rounded-xl font-medium border flex items-center gap-1.5 sm:gap-2 transition-all shadow-2xs ${
+                isLight
+                  ? 'bg-slate-100/90 hover:bg-slate-200/90 border-slate-300 text-slate-700'
+                  : 'bg-slate-900/80 hover:bg-slate-800 border-white/15 text-slate-300'
+              }`}
+              title={`${language === 'zh' ? '打开全局命令面板' : 'Open Command Palette'} (${isMac ? '⌘K' : 'Ctrl+K'})`}
+            >
+              <Command className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <span className="hidden xl:inline fluid-text-xs font-medium">
+                {language === 'zh' ? '命令' : 'Commands'}
+              </span>
+              <kbd
+                className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border leading-none ${
+                  isLight
+                    ? 'bg-white text-slate-700 border-slate-300'
+                    : 'bg-white/10 text-slate-300 border-white/15'
+                }`}
+              >
+                {isMac ? '⌘K' : 'Ctrl+K'}
+              </kbd>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsGlobalSettingsOpen(true)}
+              className={`header-action-btn rounded-xl font-medium border flex items-center gap-1.5 sm:gap-2 transition-all shadow-2xs ${
+                isLight
+                  ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-800'
+                  : 'bg-slate-900/80 hover:bg-slate-800 border-white/15 text-slate-200'
+              }`}
+              title={
+                effectiveLlmReady
+                  ? `${effectiveModelConfig.openAIModel || 'LLM'}`
+                  : language === 'zh'
+                    ? '未配置大模型'
+                    : 'LLM not configured'
+              }
+            >
+              <Sparkles
+                className={`w-3.5 h-3.5 shrink-0 ${effectiveLlmReady ? 'text-indigo-500' : 'text-amber-500'}`}
+              />
+              <span className="font-mono font-bold fluid-text-xs truncate max-w-[clamp(60px,8vw,120px)]">
+                {effectiveModelConfig.openAIModel || 'LLM'}
+              </span>
+              <span
+                className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold border shrink-0 ${
+                  effectiveLlmReady
+                    ? isLight
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : isLight
+                      ? 'bg-amber-100 text-amber-800 border-amber-300'
+                      : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                }`}
+              >
+                {effectiveLlmReady
+                  ? language === 'zh'
+                    ? '已配置'
+                    : 'Ready'
+                  : language === 'zh'
+                    ? '未配置'
+                    : 'Setup'}
+              </span>
+            </button>
             <button
               type="button"
               onClick={() => void toggleDesktopMaximize()}
@@ -825,45 +1033,62 @@ export default function App() {
             >
               <Maximize2 className="w-3.5 h-3.5 text-indigo-500" />
             </button>
-
             <button
               onClick={() => setIsCreateIssueModalOpen(true)}
               disabled={!activeProject}
-              className="px-4 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-40"
+              className="header-action-btn bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-40"
             >
               <Plus className="w-4 h-4" />
-              {t.newIssue}
+              <span className="hidden sm:inline">{t.newIssue}</span>
             </button>
           </div>
         </header>
 
-        {activeProject ? (
-          <KanbanBoard
-            issues={activeIssues}
-            gitRepos={activeProject.gitRepos || []}
-            branchPrefixConfig={activeProject.branchPrefixConfig}
-            onSelectIssue={openIssue}
-            onStartAutoDev={handleStartAutoDev}
-            onMoveColumn={handleMoveColumn}
-            onOpenCreateIssue={() => setIsCreateIssueModalOpen(true)}
-            analyzingIssueIds={analyzingIssueIds}
-            lang={language}
-            themeStyle={themeStyle}
-          />
-        ) : (
-          <div className={`flex-1 flex flex-col items-center justify-center gap-3 ${themeConfig.textSecondary}`}>
-            <p className="text-sm">{t.createProjectToStart}</p>
-            <button
-              onClick={() => {
-                setEditingProject(null);
-                setIsProjectModalOpen(true);
-              }}
-              className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold"
-            >
-              {t.newProject}
-            </button>
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {activeProject ? (
+              <KanbanBoard
+                issues={activeIssues}
+                gitRepos={activeProject.gitRepos || []}
+                branchPrefixConfig={activeProject.branchPrefixConfig}
+                onSelectIssue={openIssue}
+                onStartAutoDev={handleStartAutoDev}
+                onMoveColumn={handleMoveColumn}
+                onOpenCreateIssue={() => setIsCreateIssueModalOpen(true)}
+                analyzingIssueIds={analyzingIssueIds}
+                lang={language}
+                themeStyle={themeStyle}
+              />
+            ) : (
+              <div className={`flex-1 flex flex-col items-center justify-center gap-3 ${themeConfig.textSecondary}`}>
+                <p className="text-sm">{t.createProjectToStart}</p>
+                <button
+                  onClick={() => {
+                    setEditingProject(null);
+                    setIsProjectModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold"
+                >
+                  {t.newProject}
+                </button>
+              </div>
+            )}
           </div>
-        )}
+          {isActivityOpen && (
+            <aside
+              className={`w-80 max-w-[40vw] border-l shrink-0 ${themeConfig.sidebarBg} ${themeConfig.subtleBorder}`}
+            >
+              <ActivityTimeline
+                activeProject={activeProject || null}
+                issues={activeIssues}
+                onSelectIssue={openIssue}
+                onClose={() => setIsActivityOpen(false)}
+                language={language}
+                themeStyle={themeStyle}
+              />
+            </aside>
+          )}
+        </div>
       </main>
 
       <div
@@ -961,6 +1186,40 @@ export default function App() {
           lang={language}
         />
       )}
+
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        projects={projects}
+        activeProjectId={activeProject?.id || ''}
+        onSelectProject={(projectId) => setActiveProjectId(projectId)}
+        issues={activeIssues}
+        onSelectIssue={openIssue}
+        onCreateNewIssue={() => {
+          if (activeProject) setIsCreateIssueModalOpen(true);
+        }}
+        onCreateNewProject={() => {
+          setEditingProject(null);
+          setIsProjectModalOpen(true);
+        }}
+        onOpenProjectSettings={() => {
+          if (!activeProject) return;
+          setEditingProject(activeProject);
+          setIsProjectModalOpen(true);
+        }}
+        onOpenGlobalSettings={() => setIsGlobalSettingsOpen(true)}
+        onRefreshBoard={() => {
+          if (activeProjectId) {
+            refreshIssues(activeProjectId).catch((err) => showToast('error', err.message));
+          }
+        }}
+        onToggleActivity={() => setIsActivityOpen((v) => !v)}
+        currentTheme={themeStyle}
+        onSelectTheme={setThemeStyle}
+        language={language}
+        onToggleLanguage={() => setLanguage((l) => (l === 'en' ? 'zh' : 'en'))}
+        themeStyle={themeStyle}
+      />
     </div>
   );
 }
