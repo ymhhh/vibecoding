@@ -2,8 +2,13 @@ package api
 
 import (
 	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/ymhhh/vibecoding/internal/gitx"
 	"github.com/ymhhh/vibecoding/internal/model"
 )
 
@@ -84,4 +89,66 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleListProjectCommits(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	p, err := s.Store.GetProject(id)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	if p == nil {
+		writeErr(w, 404, "project not found")
+		return
+	}
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, perr := strconv.Atoi(raw)
+		if perr == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	perRepo := limit
+	if perRepo < 10 {
+		perRepo = 10
+	}
+	var all []gitx.RepoCommit
+	for _, repo := range p.GitRepos {
+		info, serr := os.Stat(repo.Path)
+		if serr != nil || !info.IsDir() {
+			continue
+		}
+		list, lerr := gitx.RecentCommits(repo.Path, repo.Name, perRepo)
+		if lerr != nil {
+			continue
+		}
+		all = append(all, list...)
+	}
+	sort.SliceStable(all, func(i, j int) bool {
+		ti, tj := parseCommitTime(all[i].Time), parseCommitTime(all[j].Time)
+		if !ti.IsZero() && !tj.IsZero() {
+			return ti.After(tj)
+		}
+		return all[i].Time > all[j].Time
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	if all == nil {
+		all = []gitx.RepoCommit{}
+	}
+	writeJSON(w, 200, map[string]any{"commits": all})
+}
+
+func parseCommitTime(raw string) time.Time {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }

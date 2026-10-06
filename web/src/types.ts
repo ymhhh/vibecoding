@@ -52,6 +52,15 @@ export interface Project {
   updatedAt: string;
 }
 
+export interface ProjectCommit {
+  repoName: string;
+  branch: string;
+  sha: string;
+  author: string;
+  time: string;
+  subject: string;
+}
+
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'ai' | 'system';

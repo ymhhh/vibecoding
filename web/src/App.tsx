@@ -1085,6 +1085,7 @@ export default function App() {
                 onClose={() => setIsActivityOpen(false)}
                 language={language}
                 themeStyle={themeStyle}
+                llmReady={effectiveLlmReady}
               />
             </aside>
           )}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   GitCommit,
@@ -13,9 +13,10 @@ import {
   Bot,
   X,
 } from 'lucide-react';
-import { Project, Issue } from '../types';
+import { Project, Issue, ProjectCommit } from '../types';
 import { Language, ThemeStyle } from '../lib/i18n';
 import { THEME_CONFIGS } from '../lib/theme';
+import { api } from '../lib/api';
 
 interface ActivityTimelineProps {
   activeProject: Project | null;
@@ -24,9 +25,12 @@ interface ActivityTimelineProps {
   onClose: () => void;
   language: Language;
   themeStyle: ThemeStyle;
+  llmReady?: boolean;
 }
 
 type FilterType = 'all' | 'jobs' | 'commits';
+
+const MAX_JOBS = 8;
 
 export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   activeProject,
@@ -35,9 +39,13 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   onClose,
   language,
   themeStyle,
+  llmReady = false,
 }) => {
   const [filter, setFilter] = useState<FilterType>('all');
   const [lastRefreshed, setLastRefreshed] = useState<Date>(() => new Date());
+  const [commits, setCommits] = useState<ProjectCommit[]>([]);
+  const [commitsLoading, setCommitsLoading] = useState(false);
+  const prevRunningRef = useRef(0);
 
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const isLight = themeConfig.isLight;
@@ -45,6 +53,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   const formatTime = (isoString?: string) => {
     if (!isoString) return '';
     const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) return isoString;
     const now = Date.now();
     const diffSec = Math.floor((now - date.getTime()) / 1000);
 
@@ -66,37 +75,53 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
     });
   };
 
+  const loadCommits = useCallback(async () => {
+    if (!activeProject?.id) {
+      setCommits([]);
+      setLastRefreshed(new Date());
+      return;
+    }
+    setCommitsLoading(true);
+    try {
+      const res = await api.listProjectCommits(activeProject.id, 20);
+      setCommits(res.commits || []);
+    } catch {
+      setCommits([]);
+    } finally {
+      setCommitsLoading(false);
+      setLastRefreshed(new Date());
+    }
+  }, [activeProject?.id]);
+
+  useEffect(() => {
+    void loadCommits();
+  }, [loadCommits]);
+
   const autoDevJobs = useMemo(() => {
     return issues
       .filter((i) => {
-        return (
-          i.autoDevProgress > 0 ||
-          (i.autoDevLogs && i.autoDevLogs.length > 0) ||
-          i.status === 'in_progress' ||
-          i.status === 'in_review' ||
-          Boolean(i.prInfo)
-        );
+        const failed = (i.autoDevLogs || []).some((l) => l.phase === 'failed');
+        return i.status === 'in_progress' || i.status === 'in_review' || failed;
       })
       .map((issue) => {
-        const isRunning = issue.status === 'in_progress' && issue.autoDevProgress < 100;
-        const isCompleted =
-          issue.status === 'in_review' || issue.status === 'completed' || issue.autoDevProgress >= 100;
-        const isFailed =
-          issue.status === 'requirements' && (issue.autoDevLogs || []).some((l) => l.phase === 'failed');
-
+        const failed = (issue.autoDevLogs || []).some((l) => l.phase === 'failed');
+        const isRunning = issue.status === 'in_progress' && !failed;
+        const isFailed = failed && !isRunning;
+        const isCompleted = issue.status === 'in_review' && !isFailed;
         const latestLog =
           issue.autoDevLogs && issue.autoDevLogs.length > 0
             ? issue.autoDevLogs[issue.autoDevLogs.length - 1]
             : null;
-
+        const statusLabel = isRunning ? 'running' : isFailed ? 'failed' : 'completed';
         return {
           issue,
           isRunning,
           isCompleted,
           isFailed,
+          statusLabel,
           progress: issue.autoDevProgress,
           latestLog,
-          phase: latestLog?.phase || (isRunning ? 'coding' : 'completed'),
+          phase: latestLog?.phase || (isRunning ? 'coding' : isFailed ? 'failed' : 'completed'),
           updatedAt: issue.updatedAt || issue.createdAt,
         };
       })
@@ -104,11 +129,19 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
         if (a.isRunning && !b.isRunning) return -1;
         if (!a.isRunning && b.isRunning) return 1;
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-      });
+      })
+      .slice(0, MAX_JOBS);
   }, [issues]);
 
   const runningCount = autoDevJobs.filter((j) => j.isRunning).length;
-  const commitsCount = 0;
+  const commitsCount = commits.length;
+
+  useEffect(() => {
+    if (prevRunningRef.current > 0 && runningCount === 0) {
+      void loadCommits();
+    }
+    prevRunningRef.current = runningCount;
+  }, [runningCount, loadCommits]);
 
   const phaseLabels: Record<string, { zh: string; en: string; color: string }> = {
     analyzing: { zh: '解析文档', en: 'Analyzing', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' },
@@ -121,6 +154,12 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
     committing: { zh: '提交PR', en: 'Committing', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' },
     completed: { zh: '任务就绪', en: 'Completed', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' },
     failed: { zh: '执行中断', en: 'Failed', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' },
+  };
+
+  const statusText = (label: string) => {
+    if (label === 'running') return language === 'zh' ? '进行中' : 'running';
+    if (label === 'failed') return language === 'zh' ? '失败' : 'failed';
+    return language === 'zh' ? '已完成' : 'completed';
   };
 
   return (
@@ -155,7 +194,8 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
-            onClick={() => setLastRefreshed(new Date())}
+            onClick={() => void loadCommits()}
+            disabled={commitsLoading}
             className={`p-1.5 rounded-lg border transition-all ${
               isLight
                 ? 'hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 border-slate-200'
@@ -163,7 +203,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
             }`}
             title={language === 'zh' ? '刷新动态记录' : 'Refresh activity'}
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className={`w-3.5 h-3.5 ${commitsLoading ? 'animate-spin' : ''}`} />
           </button>
           <button
             type="button"
@@ -305,38 +345,44 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
                           </div>
                         </div>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border shrink-0 ${phaseInfo.color}`}>
-                          {language === 'zh' ? phaseInfo.zh : phaseInfo.en}
+                          {statusText(job.statusLabel)}
                         </span>
                       </div>
 
-                      {job.progress > 0 && (
+                      {(job.progress > 0 || job.latestLog?.message) && (
                         <div className="mt-2 space-y-1">
                           <div className="flex items-center justify-between text-[10px]">
                             <span className={`truncate max-w-[170px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                               {job.latestLog?.message || (job.isRunning ? '执行中...' : '已就绪')}
                             </span>
-                            <span
-                              className={`font-mono font-bold shrink-0 ${
-                                job.isRunning ? 'text-indigo-500' : 'text-emerald-500'
+                            {job.progress > 0 && (
+                              <span
+                                className={`font-mono font-bold shrink-0 ${
+                                  job.isRunning ? 'text-indigo-500' : job.isFailed ? 'text-rose-500' : 'text-emerald-500'
+                                }`}
+                              >
+                                {job.progress}%
+                              </span>
+                            )}
+                          </div>
+                          {job.progress > 0 && (
+                            <div
+                              className={`w-full h-1.5 rounded-full overflow-hidden ${
+                                isLight ? 'bg-slate-200' : 'bg-black/30'
                               }`}
                             >
-                              {job.progress}%
-                            </span>
-                          </div>
-                          <div
-                            className={`w-full h-1.5 rounded-full overflow-hidden ${
-                              isLight ? 'bg-slate-200' : 'bg-black/30'
-                            }`}
-                          >
-                            <div
-                              className={`h-full transition-all duration-300 rounded-full ${
-                                job.isRunning
-                                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse'
-                                  : 'bg-emerald-500'
-                              }`}
-                              style={{ width: `${Math.min(100, Math.max(5, job.progress))}%` }}
-                            />
-                          </div>
+                              <div
+                                className={`h-full transition-all duration-300 rounded-full ${
+                                  job.isRunning
+                                    ? 'bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse'
+                                    : job.isFailed
+                                      ? 'bg-rose-500'
+                                      : 'bg-emerald-500'
+                                }`}
+                                style={{ width: `${Math.min(100, Math.max(5, job.progress))}%` }}
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -374,19 +420,54 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
               </span>
               <span className="font-mono text-[10px] font-normal">{commitsCount}</span>
             </div>
-            <div
-              className={`p-3 rounded-xl border border-dashed text-center text-xs ${
-                isLight ? 'border-slate-200 bg-slate-50/50 text-slate-500' : 'border-white/10 bg-white/2 text-slate-400'
-              }`}
-            >
-              <GitBranch className="w-4 h-4 mx-auto text-slate-400 mb-1 opacity-60" />
-              <p>{language === 'zh' ? '暂未同步到本地工程 Git 提交' : 'No git commits recorded'}</p>
-              <p className="text-[10px] text-slate-400/80 mt-0.5">
-                {language === 'zh'
-                  ? '提交列表待项目 commits API 就绪后接入'
-                  : 'Commit feed waits on the project commits API'}
-              </p>
-            </div>
+            {commitsLoading && commits.length === 0 ? (
+              <div
+                className={`p-3 rounded-xl border border-dashed text-center text-xs ${
+                  isLight ? 'border-slate-200 bg-slate-50/50 text-slate-500' : 'border-white/10 bg-white/2 text-slate-400'
+                }`}
+              >
+                <Loader2 className="w-4 h-4 mx-auto text-slate-400 mb-1 animate-spin" />
+                <p>{language === 'zh' ? '正在读取本地提交' : 'Loading local commits'}</p>
+              </div>
+            ) : commits.length === 0 ? (
+              <div
+                className={`p-3 rounded-xl border border-dashed text-center text-xs ${
+                  isLight ? 'border-slate-200 bg-slate-50/50 text-slate-500' : 'border-white/10 bg-white/2 text-slate-400'
+                }`}
+              >
+                <GitBranch className="w-4 h-4 mx-auto text-slate-400 mb-1 opacity-60" />
+                <p>{language === 'zh' ? '暂无本地 Git 提交' : 'No local git commits'}</p>
+                <p className="text-[10px] text-slate-400/80 mt-0.5">
+                  {language === 'zh' ? '切换工程或任务结束后会重新读取各仓库 HEAD' : 'Refreshes on project switch and when a job finishes'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {commits.map((c) => (
+                  <div
+                    key={`${c.repoName}-${c.sha}-${c.time}`}
+                    className={`p-2.5 rounded-xl border ${
+                      isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-white/10'
+                    }`}
+                  >
+                    <p className={`font-semibold text-xs truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {c.subject}
+                    </p>
+                    <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-slate-400">
+                      <span className="truncate">
+                        {c.repoName}
+                        {c.branch ? ` · ${c.branch}` : ''}
+                      </span>
+                      <span className="font-mono shrink-0">{c.sha}</span>
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-slate-400">
+                      <span className="truncate">{c.author}</span>
+                      <span className="shrink-0">{formatTime(c.time)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -397,8 +478,16 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
         }`}
       >
         <span className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          <span>{language === 'zh' ? 'Git 与执行器就绪' : 'Git & Executor Ready'}</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${llmReady ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+          <span>
+            {llmReady
+              ? language === 'zh'
+                ? 'Git 与执行器就绪'
+                : 'Git & Executor Ready'
+              : language === 'zh'
+                ? '大模型未配置'
+                : 'LLM not configured'}
+          </span>
         </span>
         <span className="font-mono text-slate-400/80">
           {(activeProject?.gitRepos || []).length} {language === 'zh' ? '工程仓库' : 'repos'}

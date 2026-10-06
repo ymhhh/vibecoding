@@ -229,6 +229,10 @@ export const api = {
     request<UIPrefs>('/api/ui-prefs', { method: 'PUT', body: JSON.stringify(prefs) }),
 
   listProjects: () => request<Project[]>('/api/projects'),
+  listProjectCommits: (projectId: string, limit = 20) =>
+    request<{ commits: import('../types').ProjectCommit[] }>(
+      `/api/projects/${encodeURIComponent(projectId)}/commits?limit=${limit}`
+    ),
   createProject: (p: Partial<Project>) =>
     request<Project>('/api/projects', { method: 'POST', body: JSON.stringify(p) }),
   updateProject: (id: string, p: Partial<Project>) =>

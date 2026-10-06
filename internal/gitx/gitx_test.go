@@ -617,3 +617,45 @@ func TestApplyUnifiedDiffBadHunk(t *testing.T) {
 		t.Fatal("expected apply failure")
 	}
 }
+
+func TestRecentCommitsLocalOnly(t *testing.T) {
+	dir := initRepo(t, "main")
+	writeFile(t, filepath.Join(dir, "a.txt"), "one\n")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "add a")
+
+	list, err := RecentCommits(dir, "alpha", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) < 2 {
+		t.Fatalf("commits=%d", len(list))
+	}
+	if list[0].Subject != "add a" {
+		t.Fatalf("newest subject=%q", list[0].Subject)
+	}
+	if list[0].RepoName != "alpha" || list[0].Branch != "main" {
+		t.Fatalf("meta=%+v", list[0])
+	}
+	if list[0].SHA == "" || list[0].Author == "" || list[0].Time == "" {
+		t.Fatalf("incomplete %+v", list[0])
+	}
+
+	capped, err := RecentCommits(dir, "alpha", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(capped) != 1 {
+		t.Fatalf("limit 1 got %d", len(capped))
+	}
+
+	empty := t.TempDir()
+	runGit(t, empty, "init", "-b", "main")
+	none, err := RecentCommits(empty, "empty", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("empty repo commits=%d", len(none))
+	}
+}
