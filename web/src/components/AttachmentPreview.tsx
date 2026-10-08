@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { IssueAttachment } from '../types';
 import { Language, ThemeStyle, getTranslation } from '../lib/i18n';
 import { THEME_CONFIGS } from '../lib/theme';
 import { MarkdownView } from '../lib/markdown';
-import { fileExt, formatFileSize } from '../lib/attachments';
-import { ChevronLeft, ChevronRight, File, FileText, Image as ImageIcon, X } from 'lucide-react';
+import { fileToAttachment, fileExt, formatFileSize, isPdfAttachment, isPdfFile, maxBytesForAttachment } from '../lib/attachments';
+import { pickAttachmentFiles } from '../lib/pickfiles';
+import { ChevronLeft, ChevronRight, File, FileText, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { PdfPreview } from './PdfPreview';
 
 function isMarkdown(att: IssueAttachment): boolean {
   const ext = fileExt(att.name);
@@ -17,6 +19,7 @@ interface AttachmentPreviewProps {
   onClose: () => void;
   lang: Language;
   themeStyle: ThemeStyle;
+  onRepairAttachment?: (next: IssueAttachment) => void;
 }
 
 export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
@@ -25,10 +28,18 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
   onClose,
   lang,
   themeStyle,
+  onRepairAttachment,
 }) => {
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const t = getTranslation(lang);
   const [index, setIndex] = useState(0);
+  const [localPdf, setLocalPdf] = useState<Record<string, string>>({});
+  const [repairError, setRepairError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setRepairError('');
+  }, [index, activeId]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -74,12 +85,56 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
   if (!activeId || attachments.length === 0) return null;
   const att = attachments[index] || attachments[0];
   if (!att) return null;
+  const pdfSrc = att.dataUrl || localPdf[att.id];
+
+  const applyPdfFile = async (file: File) => {
+    setRepairError('');
+    if (!isPdfFile(file.name, file.type)) {
+      setRepairError(lang === 'zh' ? '请选择 PDF 文件' : 'Please choose a PDF file');
+      return;
+    }
+    const limit = maxBytesForAttachment(file.name, file.type);
+    if (file.size > limit) {
+      setRepairError(
+        lang === 'zh'
+          ? `${file.name} 超过 ${formatFileSize(limit)} 限制`
+          : `${file.name} exceeds ${formatFileSize(limit)}`
+      );
+      return;
+    }
+    try {
+      const next = await fileToAttachment(file);
+      const repaired: IssueAttachment = { ...next, id: att.id, name: att.name };
+      if (repaired.dataUrl) {
+        setLocalPdf((prev) => ({ ...prev, [att.id]: repaired.dataUrl as string }));
+      }
+      onRepairAttachment?.(repaired);
+    } catch {
+      setRepairError(lang === 'zh' ? `无法读取 ${file.name}` : `Could not read ${file.name}`);
+    }
+  };
+
+  const choosePdf = async () => {
+    try {
+      const picked = await pickAttachmentFiles();
+      if (picked.mode === 'browser') {
+        fileInputRef.current?.click();
+        return;
+      }
+      const file = picked.files.find((f) => isPdfFile(f.name, f.type)) || picked.files[0];
+      if (file) await applyPdfFile(file);
+    } catch (err) {
+      setRepairError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const icon =
     att.kind === 'image' ? (
       <ImageIcon className="w-4 h-4 text-purple-400 shrink-0" />
     ) : att.kind === 'text' ? (
       <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+    ) : isPdfAttachment(att) ? (
+      <FileText className="w-4 h-4 text-rose-400 shrink-0" />
     ) : (
       <File className="w-4 h-4 text-slate-400 shrink-0" />
     );
@@ -132,6 +187,32 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
               ) : (
                 <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed">{att.text}</pre>
               )}
+            </div>
+          ) : isPdfAttachment(att) && pdfSrc ? (
+            <PdfPreview dataUrl={pdfSrc} lang={lang} isLight={!!themeConfig.isLight} />
+          ) : isPdfAttachment(att) ? (
+            <div className={`px-6 py-16 text-center text-sm ${themeConfig.textMuted}`}>
+              <p>{t.attachmentPdfMissing}</p>
+              <button
+                type="button"
+                onClick={() => void choosePdf()}
+                className={`mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs ${themeConfig.btnSecondary} ${themeConfig.btnSecondaryText}`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {t.attachmentPdfChoose}
+              </button>
+              {repairError ? <p className="mt-3 text-rose-500">{repairError}</p> : null}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void applyPdfFile(file);
+                }}
+              />
             </div>
           ) : (
             <div className={`px-6 py-16 text-center text-sm ${themeConfig.textMuted}`}>{t.attachmentNoPreview}</div>

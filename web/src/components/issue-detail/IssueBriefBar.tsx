@@ -5,6 +5,7 @@ import { THEME_CONFIGS } from '../../lib/theme';
 import {
   filesToAttachments,
   formatFileSize,
+  isPdfAttachment,
   MAX_ISSUE_ATTACHMENTS,
 } from '../../lib/attachments';
 import { pickAttachmentFiles } from '../../lib/pickfiles';
@@ -144,6 +145,8 @@ export const IssueBriefBar: React.FC<IssueBriefBarProps> = ({
                   >
                     {att.kind === 'image' && att.dataUrl ? (
                       <img src={att.dataUrl} alt="" className="w-4 h-4 rounded object-cover shrink-0" />
+                    ) : isPdfAttachment(att) ? (
+                      <FileText className="w-3 h-3 text-rose-400 shrink-0" />
                     ) : (
                       <FileText className="w-3 h-3 text-indigo-400 shrink-0" />
                     )}
@@ -257,6 +260,8 @@ export const IssueBriefBar: React.FC<IssueBriefBarProps> = ({
                       <FileText className="w-3.5 h-3.5 text-indigo-400" />
                     ) : att.kind === 'image' ? (
                       <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
+                    ) : isPdfAttachment(att) ? (
+                      <FileText className="w-3.5 h-3.5 text-rose-400" />
                     ) : (
                       <File className="w-3.5 h-3.5 text-slate-400" />
                     )}
@@ -319,6 +324,17 @@ export const IssueBriefBar: React.FC<IssueBriefBarProps> = ({
         onClose={() => setPreviewId(null)}
         lang={lang}
         themeStyle={themeStyle}
+        onRepairAttachment={(next) => {
+          const merged = attachments.map((a) => (a.id === next.id ? next : a));
+          setAttachments(merged);
+          if (!canEdit) return;
+          if (editing) return;
+          onUpdateIssue({
+            ...issue,
+            attachments: merged.length ? merged : undefined,
+            updatedAt: new Date().toISOString(),
+          });
+        }}
       />
     </div>
   );

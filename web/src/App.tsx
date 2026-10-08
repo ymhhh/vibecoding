@@ -98,6 +98,10 @@ export default function App() {
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const isLight = themeConfig.isLight;
 
+  useEffect(() => {
+    document.getElementById('boot-splash')?.remove();
+  }, []);
+
   const showToast = useCallback((type: 'error' | 'info' | 'success', text: string) => {
     setToast({ type, text });
     window.setTimeout(() => setToast(null), 4000);

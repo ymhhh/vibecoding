@@ -5,6 +5,7 @@ import { THEME_CONFIGS } from '../lib/theme';
 import {
   filesToAttachments,
   formatFileSize,
+  isPdfAttachment,
   MAX_ISSUE_ATTACHMENTS,
 } from '../lib/attachments';
 import { pickAttachmentFiles } from '../lib/pickfiles';
@@ -385,6 +386,8 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
                               <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
                             ) : att.kind === 'image' ? (
                               <ImageIcon className="w-4 h-4 text-purple-400 shrink-0" />
+                            ) : isPdfAttachment(att) ? (
+                              <FileText className="w-4 h-4 text-rose-400 shrink-0" />
                             ) : (
                               <File className="w-4 h-4 text-slate-400 shrink-0" />
                             )}
@@ -393,6 +396,7 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
                               <div className={`text-[10px] ${themeConfig.textMuted}`}>
                                 {formatFileSize(att.size)}
                                 {att.kind === 'text' ? (lang === 'zh' ? ' · 将写入需求上下文' : ' · included in spec context') : ''}
+                                {isPdfAttachment(att) ? (lang === 'zh' ? ' · 可预览 PDF' : ' · PDF preview') : ''}
                                 {att.kind === 'file' ? (lang === 'zh' ? ' · 无法解析文本' : ' · binary, name only') : ''}
                                 {' · '}
                                 {t.attachmentPreview}
@@ -612,6 +616,9 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
         onClose={() => setPreviewId(null)}
         lang={lang}
         themeStyle={themeStyle}
+        onRepairAttachment={(next) => {
+          setAttachments((prev) => prev.map((a) => (a.id === next.id ? next : a)));
+        }}
       />
     </div>
   );

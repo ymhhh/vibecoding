@@ -250,7 +250,7 @@ export interface IssueAttachment {
   name: string;
   mime?: string;
   size: number;
-  kind: 'text' | 'image' | 'file';
+  kind: 'text' | 'image' | 'file' | 'pdf';
   text?: string;
   dataUrl?: string;
 }

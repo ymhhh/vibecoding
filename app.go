@@ -21,10 +21,11 @@ import (
 	"github.com/ymhhh/vibecoding/internal/config"
 )
 
-// Keep in sync with web/src/lib/attachments.ts MAX_ATTACHMENT_BYTES / MAX_ISSUE_ATTACHMENTS.
+// Keep in sync with web/src/lib/attachments.ts MAX_ATTACHMENT_BYTES / MAX_PDF_ATTACHMENT_BYTES / MAX_ISSUE_ATTACHMENTS.
 const (
-	maxAttachmentBytes = 2 * 1024 * 1024
-	maxOpenAttachments = 12
+	maxAttachmentBytes    = 2 * 1024 * 1024
+	maxPdfAttachmentBytes = 10 * 1024 * 1024
+	maxOpenAttachments    = 12
 )
 
 // OpenedAttachmentFile is a desktop file-picker result for issue attachments.
@@ -208,6 +209,13 @@ func (a *App) SaveTextFile(defaultFilename, contents string) (string, error) {
 	return path, nil
 }
 
+func attachmentByteLimit(path string) int64 {
+	if strings.EqualFold(filepath.Ext(path), ".pdf") {
+		return maxPdfAttachmentBytes
+	}
+	return maxAttachmentBytes
+}
+
 // OpenAttachmentFiles opens a native multi-select dialog and returns file
 // contents as base64. Prefer this over <input type="file"> in WKWebView: HTML
 // file pickers and Wails sheet dialogs often open as a blank white panel over
@@ -238,7 +246,7 @@ func (a *App) OpenAttachmentFiles() ([]OpenedAttachmentFile, error) {
 		if err != nil {
 			continue
 		}
-		if st.IsDir() || st.Size() <= 0 || st.Size() > maxAttachmentBytes {
+		if st.IsDir() || st.Size() <= 0 || st.Size() > attachmentByteLimit(path) {
 			continue
 		}
 		raw, err := os.ReadFile(path)
@@ -261,6 +269,8 @@ func (a *App) OpenAttachmentFiles() ([]OpenedAttachmentFile, error) {
 				mime = "image/webp"
 			case ".svg":
 				mime = "image/svg+xml"
+			case ".pdf":
+				mime = "application/pdf"
 			}
 		}
 		out = append(out, OpenedAttachmentFile{
@@ -290,7 +300,7 @@ func (a *App) pickAttachmentPaths() ([]string, error) {
 		Filters: []wailsruntime.FileFilter{
 			{
 				DisplayName: "Common attachments",
-				Pattern:     "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.svg;*.md;*.txt;*.json;*.yaml;*.yml;*.csv;*.log",
+				Pattern:     "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.svg;*.pdf;*.md;*.txt;*.json;*.yaml;*.yml;*.csv;*.log",
 			},
 			{DisplayName: "All files (*.*)", Pattern: "*.*"},
 		},

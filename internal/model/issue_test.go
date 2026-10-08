@@ -12,6 +12,7 @@ func TestPromptDescriptionIncludesAttachmentText(t *testing.T) {
 			{Name: "prd.md", Kind: "text", Text: "# PRD\n方案一"},
 			{Name: "ui.png", Kind: "image"},
 			{Name: "notes.bin", Kind: "file"},
+			{Name: "spec.pdf", Kind: "pdf"},
 		},
 	}
 	got := iss.PromptDescription()
@@ -21,6 +22,7 @@ func TestPromptDescriptionIncludesAttachmentText(t *testing.T) {
 		"# PRD\n方案一",
 		"[Attached image: ui.png]",
 		"[Attached file: notes.bin]",
+		"[Attached file: spec.pdf]",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("PromptDescription missing %q in %q", want, got)

@@ -2,6 +2,7 @@ import { Issue, IssueAttachment } from '../types';
 
 export const MAX_ISSUE_ATTACHMENTS = 12;
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+export const MAX_PDF_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENT_TEXT_CHARS = 80_000;
 
 const TEXT_EXT = new Set([
@@ -13,6 +14,7 @@ const TEXT_EXT = new Set([
 ]);
 
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
+const PDF_EXT = new Set(['pdf']);
 
 export function fileExt(name: string): string {
   const base = name.split(/[/\\]/).pop() || name;
@@ -26,6 +28,18 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+export function isPdfFile(name: string, mime?: string): boolean {
+  return PDF_EXT.has(fileExt(name)) || mime === 'application/pdf';
+}
+
+export function isPdfAttachment(att: Pick<IssueAttachment, 'kind' | 'name' | 'mime'>): boolean {
+  return att.kind === 'pdf' || isPdfFile(att.name, att.mime);
+}
+
+export function maxBytesForAttachment(name: string, mime?: string): number {
+  return isPdfFile(name, mime) ? MAX_PDF_ATTACHMENT_BYTES : MAX_ATTACHMENT_BYTES;
+}
+
 function looksLikeText(buf: Uint8Array): boolean {
   const n = Math.min(buf.length, 4096);
   let suspicious = 0;
@@ -35,6 +49,10 @@ function looksLikeText(buf: Uint8Array): boolean {
     if (b < 7 || (b > 13 && b < 32)) suspicious++;
   }
   return suspicious / Math.max(n, 1) < 0.08;
+}
+
+function isPdfMagic(buf: Uint8Array): boolean {
+  return buf.length >= 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
 }
 
 async function readAsDataURL(file: File): Promise<string> {
@@ -59,6 +77,11 @@ export async function fileToAttachment(file: File): Promise<IssueAttachment> {
   if (IMAGE_EXT.has(ext) || (file.type && file.type.startsWith('image/'))) {
     const dataUrl = await readAsDataURL(file);
     return { ...base, kind: 'image', dataUrl };
+  }
+
+  if (isPdfFile(file.name, file.type) || isPdfMagic(new Uint8Array(await file.slice(0, 8).arrayBuffer()))) {
+    const dataUrl = await readAsDataURL(file);
+    return { ...base, kind: 'pdf', mime: file.type || 'application/pdf', dataUrl };
   }
 
   if (TEXT_EXT.has(ext) || file.type.startsWith('text/') || file.type === 'application/json') {
@@ -100,12 +123,33 @@ export async function filesToAttachments(
       break;
     }
     const key = `${file.name}:${file.size}`;
-    if (seen.has(key)) continue;
-    if (file.size > MAX_ATTACHMENT_BYTES) {
+    const limit = maxBytesForAttachment(file.name, file.type);
+    const existingIdx = next.findIndex((a) => `${a.name}:${a.size}` === key);
+    if (existingIdx >= 0) {
+      const prev = next[existingIdx];
+      if (prev.dataUrl || prev.text) continue;
+      if (file.size > limit) {
+        errors.push(
+          lang === 'zh'
+            ? `${file.name} 超过 ${formatFileSize(limit)} 限制`
+            : `${file.name} exceeds ${formatFileSize(limit)}`
+        );
+        continue;
+      }
+      try {
+        const att = await fileToAttachment(file);
+        next[existingIdx] = { ...att, id: prev.id };
+        seen.add(key);
+      } catch {
+        errors.push(lang === 'zh' ? `无法读取 ${file.name}` : `Could not read ${file.name}`);
+      }
+      continue;
+    }
+    if (file.size > limit) {
       errors.push(
         lang === 'zh'
-          ? `${file.name} 超过 ${formatFileSize(MAX_ATTACHMENT_BYTES)} 限制`
-          : `${file.name} exceeds ${formatFileSize(MAX_ATTACHMENT_BYTES)}`
+          ? `${file.name} 超过 ${formatFileSize(limit)} 限制`
+          : `${file.name} exceeds ${formatFileSize(limit)}`
       );
       continue;
     }

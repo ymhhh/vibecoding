@@ -274,7 +274,9 @@ func (s *sseWriter) event(v any) error {
 
 func decodeJSON(r *http.Request, dest any) error {
 	defer r.Body.Close()
-	dec := json.NewDecoder(io.LimitReader(r.Body, 10<<20))
+	// Attachments are stored as data URLs in the issue JSON (PDF cap 10 MiB
+	// becomes ~14 MiB encoded, plus other files). 10 MiB was too small.
+	dec := json.NewDecoder(io.LimitReader(r.Body, 64<<20))
 	return dec.Decode(dest)
 }
 

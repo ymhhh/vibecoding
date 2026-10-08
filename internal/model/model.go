@@ -401,7 +401,7 @@ type IssueAttachment struct {
 	Name    string `json:"name"`
 	MIME    string `json:"mime,omitempty"`
 	Size    int64  `json:"size"`
-	Kind    string `json:"kind"` // text | image | file
+	Kind    string `json:"kind"` // text | image | file | pdf
 	Text    string `json:"text,omitempty"`
 	DataURL string `json:"dataUrl,omitempty"`
 }
@@ -483,6 +483,8 @@ func (iss *Issue) PromptDescription() string {
 			fmt.Fprintf(&b, "\n\n----- Attached file: %s -----\n%s", name, a.Text)
 		case a.Kind == "image":
 			fmt.Fprintf(&b, "\n\n[Attached image: %s]", name)
+		case a.Kind == "pdf":
+			fmt.Fprintf(&b, "\n\n[Attached file: %s]", name)
 		default:
 			fmt.Fprintf(&b, "\n\n[Attached file: %s]", name)
 		}
