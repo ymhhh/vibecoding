@@ -143,7 +143,7 @@ curl -s http://127.0.0.1:8090/api/health
 4. Create an **Issue**, chat with the AI, extract the **requirement document**, then the **Dev Spec**. Large issues can be split into sub-requirements (each with its own Spec).
 5. **Accept Spec → Backlog**, then **Start Auto-Dev**. Work runs in isolated git worktrees under `{data-dir}/worktrees/{issueID}/{repoID}/` so your main checkout stays untouched. One commit per sub-requirement when split.
 6. Watch live logs. On success the issue moves to **In Review** with a real file tree, unified diff, and quality-gate results. Failed tests may auto-heal a few rounds; still failing → back to Backlog, worktree kept for inspection.
-7. **Approve & Merge** merges the feature branch into the repo default branch locally (refuses if that branch is checked out and dirty). Optional **Publish to remote** pushes and may run `gh pr create` when `gh` is installed.
+7. **Approve & Merge** merges the feature branch into the repo default branch locally (refuses if that branch is checked out and dirty, if an Auto-Dev job is still running, or if any inline review comment is still `open` / `fixing`). Rework keeps comments on the same branch (optional **Sync to Dev Spec**); repair failure stays in review. Optional **Publish to remote** pushes and may run `gh pr create` when `gh` is installed.
 
 Design notes: [docs/autodev-isolation-executor-review.md](./docs/autodev-isolation-executor-review.md). Follow-ups: [docs/review-loop-executor-override.md](./docs/review-loop-executor-override.md).
 

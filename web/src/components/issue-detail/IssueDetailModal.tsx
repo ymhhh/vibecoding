@@ -6,6 +6,7 @@ import { THEME_CONFIGS } from '../../lib/theme';
 import { api } from '../../lib/api';
 import { hasSubRequirements, specMarkdownForExport, reqMarkdownForExport, visibleSpec, coerceReqMarkdown, coerceDocMarkdown, coerceDevSpec, backlogBlockReason, hasUnverifiedModifies } from '../../lib/subreq';
 import { formatReviewComments } from '../../lib/reviewComments';
+import { markNonFixedCommentsFixing } from '../../lib/reviewCommentStatus';
 import { saveTextFile } from '../../lib/savefile';
 import { useIssueChat } from './useIssueChat';
 import { IssueDetailHeader } from './IssueDetailHeader';
@@ -71,6 +72,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
   const [specMarkdown, setSpecMarkdown] = useState(issue.devSpec?.rawMarkdown || '');
   const [reqMarkdown, setReqMarkdown] = useState(issue.reqDoc?.rawMarkdown || '');
   const [reworkFeedback, setReworkFeedback] = useState('');
+  const [syncReworkToSpec, setSyncReworkToSpec] = useState(false);
   const [showReworkBox, setShowReworkBox] = useState(false);
   const [editingRepos, setEditingRepos] = useState(false);
   const [selectedScope, setSelectedScope] = useState<string>('all');
@@ -344,11 +346,11 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
     });
   };
 
-  const submitRework = async (feedback: string, fromComments: boolean) => {
+  const submitRework = async (feedback: string, _fromComments: boolean) => {
     setShowReworkBox(false);
-    setActiveTab('chat');
     const scope = reworkScope;
     setSelectedScope(scope);
+    const syncSpec = syncReworkToSpec;
 
     const targetLabel =
       scope === 'all'
@@ -357,16 +359,13 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
           : 'whole requirement'
         : (issue.subRequirements || []).find((s) => s.id === scope)?.title || scope;
 
-    const prompt =
-      lang === 'zh'
-        ? `开发者在评审中指出了以下问题，需要二次修改代码与开发文档（范围: ${targetLabel}）:\n"${feedback}"\n请重新分析并更新对应待开发文档。`
-        : `Reviewer requested rework for ${targetLabel}:\n"${feedback}"\nPlease revise the Dev Spec(s) accordingly.`;
+    const nextComments = markNonFixedCommentsFixing(issue.reviewComments || []);
 
     const updatedIssue: Issue = {
       ...issue,
       reviewFeedback: feedback,
       reworkSubId: scope === 'all' ? '' : scope,
-      reviewComments: fromComments ? [] : issue.reviewComments,
+      reviewComments: nextComments,
       autoDevLogs: [
         ...issue.autoDevLogs,
         {
@@ -375,20 +374,34 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
           phase: 'analyzing',
           message:
             lang === 'zh'
-              ? `收到二次评审意见（${targetLabel}）: "${feedback}". 正在更新 Dev Spec...`
-              : `Rework feedback (${targetLabel}): "${feedback}". Updating Dev Spec...`,
+              ? syncSpec
+                ? `收到二次评审意见（${targetLabel}）: "${feedback}". 正在同步 Dev Spec 并返工...`
+                : `收到二次评审意见（${targetLabel}）: "${feedback}". 正在同一分支上返工代码...`
+              : syncSpec
+                ? `Rework feedback (${targetLabel}): "${feedback}". Syncing Dev Spec then repairing...`
+                : `Rework feedback (${targetLabel}): "${feedback}". Repairing on the same branch...`,
         },
       ],
     };
 
     onUpdateIssue(updatedIssue);
     setReworkFeedback('');
+    setSyncReworkToSpec(false);
 
-    await handleSendMessage(prompt, { forceSpecSync: true, scope });
+    if (syncSpec) {
+      setActiveTab('chat');
+      const prompt =
+        lang === 'zh'
+          ? `开发者在评审中指出了以下问题，需要二次修改代码与开发文档（范围: ${targetLabel}）:\n"${feedback}"\n请重新分析并更新对应待开发文档。`
+          : `Reviewer requested rework for ${targetLabel}:\n"${feedback}"\nPlease revise the Dev Spec(s) accordingly.`;
+      await handleSendMessage(prompt, { forceSpecSync: true, scope });
+    } else {
+      setActiveTab('console');
+    }
     onStartAutoDev(issue.id, scope === 'all' ? undefined : scope);
   };
 
-  const handleApproveMerge = async (targets: { repoId: string; branch: string }[]) => {
+  const handleApproveMerge = async (targets: { repoId: string; branch: string }[] = []) => {
     try {
       const saved = await api.approveMerge(issue.id, {
         targets,
@@ -639,6 +652,8 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
               setShowReworkBox={setShowReworkBox}
               reworkFeedback={reworkFeedback}
               setReworkFeedback={setReworkFeedback}
+              syncReworkToSpec={syncReworkToSpec}
+              setSyncReworkToSpec={setSyncReworkToSpec}
               reworkScope={reworkScope}
               setReworkScope={setReworkScope}
               handleReworkSubmit={handleReworkSubmit}

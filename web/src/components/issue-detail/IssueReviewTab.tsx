@@ -4,6 +4,7 @@ import { Language, getTranslation, ThemeStyle } from '../../lib/i18n';
 import { THEME_CONFIGS } from '../../lib/theme';
 import { DiffReview } from '../DiffReview';
 import { api } from '../../lib/api';
+import { hasBlockingReviewComments } from '../../lib/reviewCommentStatus';
 import {
   GitPullRequest,
   RotateCcw,
@@ -22,6 +23,8 @@ interface IssueReviewTabProps {
   setShowReworkBox: React.Dispatch<React.SetStateAction<boolean>>;
   reworkFeedback: string;
   setReworkFeedback: React.Dispatch<React.SetStateAction<string>>;
+  syncReworkToSpec: boolean;
+  setSyncReworkToSpec: React.Dispatch<React.SetStateAction<boolean>>;
   reworkScope: string;
   setReworkScope: React.Dispatch<React.SetStateAction<string>>;
   handleReworkSubmit: () => Promise<void>;
@@ -41,6 +44,8 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
   setShowReworkBox,
   reworkFeedback,
   setReworkFeedback,
+  syncReworkToSpec,
+  setSyncReworkToSpec,
   reworkScope,
   setReworkScope,
   handleReworkSubmit,
@@ -52,6 +57,11 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
 }) => {
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const t = getTranslation(lang);
+  const mergeBlocked = hasBlockingReviewComments(issue.reviewComments);
+  const openCommentCount = (issue.reviewComments || []).filter((c) => {
+    const st = (c.status || 'open').trim();
+    return st === 'open' || st === 'fixing' || st === '';
+  }).length;
   type RepoBranches = { repoId: string; repoName: string; default?: string; branches: string[] };
   const [repoBranches, setRepoBranches] = useState<RepoBranches[]>([]);
   const [targets, setTargets] = useState<Record<string, string>>({});
@@ -178,11 +188,21 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
         </div>
 
         {issue.status === 'in_review' && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-end gap-2">
+          <label className={`flex items-center gap-1.5 text-[10px] cursor-pointer ${themeConfig.textMuted}`}>
+            <input
+              type="checkbox"
+              checked={syncReworkToSpec}
+              onChange={(e) => setSyncReworkToSpec(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            {t.syncReworkToSpec}
+          </label>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <button
               type="button"
               onClick={() => void handleReworkByComments()}
-              disabled={!issue.reviewComments?.length}
+              disabled={!openCommentCount}
               className="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-800 dark:text-amber-200 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -206,6 +226,8 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
               {publishingRemote ? t.publishingRemote : t.publishRemote}
             </button>
             <button
+              disabled={mergeBlocked}
+              title={mergeBlocked ? t.mergeBlockedByComments : undefined}
               onClick={() =>
                 void handleApproveMerge(
                   repoBranches
@@ -216,14 +238,21 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
                     }))
                 )
               }
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-lg flex items-center gap-1.5 transition-all"
+              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-lg flex items-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-600"
             >
               <GitMerge className="w-4 h-4" />
               合并代码 (移至已完成)
             </button>
           </div>
+          </div>
         )}
       </div>
+      {issue.status === 'in_review' && mergeBlocked ? (
+        <p className="text-[11px] text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          {t.mergeBlockedByComments}
+        </p>
+      ) : null}
 
       {/* Real diff review */}
       <DiffReview
@@ -272,6 +301,18 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
             placeholder="指出问题所在（例如: 高并发下请求锁过期时间过短，请补全 Redis 续期与告警）"
             className={`w-full p-3 border rounded-lg text-xs focus:outline-none focus:border-amber-500 ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
           />
+          <label className={`flex items-start gap-2 text-[11px] cursor-pointer ${themeConfig.textSecondary}`}>
+            <input
+              type="checkbox"
+              checked={syncReworkToSpec}
+              onChange={(e) => setSyncReworkToSpec(e.target.checked)}
+              className="mt-0.5 rounded border-slate-300"
+            />
+            <span>
+              <span className={`font-semibold ${themeConfig.textPrimary}`}>{t.syncReworkToSpec}</span>
+              <span className={`block mt-0.5 ${themeConfig.textMuted}`}>{t.syncReworkToSpecHint}</span>
+            </span>
+          </label>
           <div className="flex justify-end gap-2">
             <button
               onClick={() => setShowReworkBox(false)}

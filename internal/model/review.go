@@ -26,7 +26,12 @@ func FormatReviewComments(comments []DiffComment, repoName func(repoID string) s
 	}
 	var b strings.Builder
 	b.WriteString("Review comments (fix these hunks; do not unrelated refactors):\n")
+	wrote := 0
 	for _, c := range comments {
+		if CommentStatus(c) == CommentFixed {
+			continue
+		}
+		wrote++
 		name := strings.TrimSpace(c.RepoID)
 		if repoName != nil {
 			if n := strings.TrimSpace(repoName(c.RepoID)); n != "" {
@@ -55,6 +60,9 @@ func FormatReviewComments(comments []DiffComment, repoName func(repoID string) s
 		if body := strings.TrimSpace(c.Body); body != "" {
 			fmt.Fprintf(&b, "  %s\n", body)
 		}
+	}
+	if wrote == 0 {
+		return ""
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

@@ -52,6 +52,44 @@ func TestFormatReviewComments(t *testing.T) {
 	}
 }
 
+func TestCommentStatusAndBlocking(t *testing.T) {
+	t.Parallel()
+	if CommentStatus(DiffComment{}) != CommentOpen {
+		t.Fatal("empty status is open")
+	}
+	comments := []DiffComment{
+		{ID: "1", Status: CommentOpen, Body: "a"},
+		{ID: "2", Status: CommentFixed, Body: "b"},
+	}
+	if !HasBlockingReviewComments(comments) {
+		t.Fatal("open comment should block")
+	}
+	fixedOnly := MarkFixingCommentsFixed(MarkNonFixedCommentsFixing(comments))
+	if HasBlockingReviewComments(fixedOnly) {
+		t.Fatalf("after fix should not block: %+v", fixedOnly)
+	}
+	if FormatReviewComments([]DiffComment{{Status: CommentFixed, Body: "x", Path: "a.go"}}, nil) != "" {
+		t.Fatal("fixed comments omitted from prompt")
+	}
+}
+
+func TestIsReviewRepair(t *testing.T) {
+	t.Parallel()
+	iss := &Issue{}
+	if iss.IsReviewRepair() {
+		t.Fatal()
+	}
+	iss.ReviewFeedback = "please fix"
+	if !iss.IsReviewRepair() {
+		t.Fatal("feedback marks repair")
+	}
+	iss.ReviewFeedback = ""
+	iss.ReviewComments = []DiffComment{{Status: CommentFixing}}
+	if !iss.IsReviewRepair() {
+		t.Fatal("fixing comment marks repair")
+	}
+}
+
 func TestFormatReviewCommentsTruncatesQuote(t *testing.T) {
 	t.Parallel()
 	raw := strings.Repeat("x", QuoteMaxRunes+50)

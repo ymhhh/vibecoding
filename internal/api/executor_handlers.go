@@ -609,6 +609,14 @@ func (s *Server) handleApproveMerge(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "no PR/branch to merge")
 		return
 	}
+	if active, _ := s.Store.ActiveJobForRepoIssue(id); active != nil {
+		writeErr(w, 409, "auto-dev job is still running; wait for it to finish before merging")
+		return
+	}
+	if model.HasBlockingReviewComments(issue.ReviewComments) {
+		writeErr(w, 409, "resolve open review comments before merging")
+		return
+	}
 	var body struct {
 		TargetBranch string `json:"targetBranch"`
 		Targets      []struct {

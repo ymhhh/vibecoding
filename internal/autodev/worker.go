@@ -76,6 +76,7 @@ func (r *Runner) Start(jobID string) {
 }
 
 // resetIssueToBacklog moves a stuck in_progress issue back after fail/cancel.
+// Review-repair runs stay in_review and reopen fixing comments instead of backlog.
 func (r *Runner) resetIssueToBacklog(issueID string) error {
 	issue, err := r.Store.GetIssue(issueID)
 	if err != nil || issue == nil {
@@ -84,7 +85,12 @@ func (r *Runner) resetIssueToBacklog(issueID string) error {
 	if issue.Status != model.StatusInProgress {
 		return nil
 	}
-	issue.Status = model.StatusBacklog
+	if issue.IsReviewRepair() {
+		issue.Status = model.StatusInReview
+		issue.ReviewComments = model.MarkFixingCommentsOpen(issue.ReviewComments)
+	} else {
+		issue.Status = model.StatusBacklog
+	}
 	issue.UpdatedAt = model.NowISO()
 	return r.Store.UpsertIssue(*issue)
 }
@@ -215,7 +221,7 @@ func (r *Runner) run(ctx context.Context, jobID string) error {
 			return err
 		}
 	} else {
-		quality, err = r.developOne(ctx, job, issue, sessions, cfg, execCfg, issue.DevSpec, issue.Title, issue.PromptDescription(), "", 40, 90, true, progress)
+		quality, err = r.developOne(ctx, job, issue, sessions, cfg, execCfg, issue.DevSpec, issue.Title, issue.PromptDescription(), withReviewFeedback(issue, ""), 40, 90, true, progress)
 		if err != nil {
 			return err
 		}
@@ -257,6 +263,10 @@ func (r *Runner) run(ctx context.Context, jobID string) error {
 	issue.PRInfo = pr
 	issue.CurrentSubID = ""
 	issue.ReworkSubID = ""
+	if issue.IsReviewRepair() || model.HasBlockingReviewComments(issue.ReviewComments) {
+		issue.ReviewComments = model.MarkFixingCommentsFixed(issue.ReviewComments)
+		issue.ReviewFeedback = ""
+	}
 	issue.UpdatedAt = model.NowISO()
 	_ = r.appendLog(job, "completed", "Code committed; issue moved to in_review", "")
 	logs, _ := r.Store.ListJobLogs(job.ID)

@@ -26,6 +26,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { hasBlockingReviewComments } from '../../lib/reviewCommentStatus';
 
 interface StatusFocusBannerProps {
   issue: Issue;
@@ -42,7 +43,7 @@ interface StatusFocusBannerProps {
   onUpdateIssue: (updatedIssue: Issue) => void;
   onStartAutoDev: (issueId: string, subRequirementId?: string) => void;
   onCancelAutoDev?: (issueId: string) => void;
-  handleApproveMerge: () => Promise<void>;
+  handleApproveMerge: (targets?: { repoId: string; branch: string }[]) => Promise<void>;
 }
 
 export const StatusFocusBanner: React.FC<StatusFocusBannerProps> = ({
@@ -63,6 +64,7 @@ export const StatusFocusBanner: React.FC<StatusFocusBannerProps> = ({
   const reqOk = requirementAccepted(issue) || legacySpecOnly(issue);
   const canDesign = reqOk && associatedRepos.length > 0;
   const targetingSub = splitIssue && selectedScope !== 'all';
+  const mergeBlocked = hasBlockingReviewComments(issue.reviewComments);
 
   const startDesignFromSource = () => {
     if (isSending) return;
@@ -321,11 +323,17 @@ export const StatusFocusBanner: React.FC<StatusFocusBannerProps> = ({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
+              disabled={mergeBlocked}
+              title={mergeBlocked ? t.mergeBlockedByComments : undefined}
               onClick={() => {
-                handleApproveMerge();
+                if (mergeBlocked) {
+                  setActiveTab('review');
+                  return;
+                }
+                void handleApproveMerge([]);
                 setActiveTab('review');
               }}
-              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 shadow transition-all"
+              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 shadow transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               {t.approveMergeBtn}

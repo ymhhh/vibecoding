@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, FileCode2, GitBranch, Loader2, MessageSqua
 import { api } from '../lib/api';
 import { isCommentableDiffLine, parseUnifiedDiff, sumDiffStats } from '../lib/diffFormat';
 import { truncateQuote } from '../lib/reviewComments';
+import { commentStatus } from '../lib/reviewCommentStatus';
 import { Language, ThemeStyle, TRANSLATIONS } from '../lib/i18n';
 import { THEME_CONFIGS } from '../lib/theme';
 import { DiffComment, DiffFile, Issue, IssueDiff, QualityGate, RepoDiff } from '../types';
@@ -240,6 +241,7 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
       endLine: Math.max(...nums),
       quote: truncateQuote(slice.map((l) => l.text).join('\n')),
       body: draft.trim(),
+      status: 'open',
       createdAt: new Date().toISOString(),
     };
     onCommentsChange([...comments, comment]);
@@ -482,14 +484,32 @@ export const DiffReview: React.FC<DiffReviewProps> = ({
           <div className="text-xs font-semibold text-slate-500">{t.diffCommentsTitle}</div>
           {comments.map((c) => {
             const repoName = data.repos.find((r) => r.repoId === c.repoId)?.repoName || c.repoId;
+            const st = commentStatus(c);
+            const statusLabel =
+              st === 'fixing'
+                ? t.commentStatusFixing
+                : st === 'fixed'
+                  ? t.commentStatusFixed
+                  : t.commentStatusOpen;
+            const statusClass =
+              st === 'fixed'
+                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                : st === 'fixing'
+                  ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                  : 'bg-amber-500/15 text-amber-800 dark:text-amber-200';
             return (
               <div
                 key={c.id}
                 className="text-xs p-2 rounded-lg border border-amber-500/30 bg-amber-500/5 flex gap-2"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono text-[10px] text-slate-500 truncate">
-                    [{repoName}] {c.path}:{c.side}:{c.startLine}-{c.endLine}
+                  <div className="font-mono text-[10px] text-slate-500 truncate flex items-center gap-1.5">
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-sans font-bold ${statusClass}`}>
+                      {statusLabel}
+                    </span>
+                    <span className="truncate">
+                      [{repoName}] {c.path}:{c.side}:{c.startLine}-{c.endLine}
+                    </span>
                   </div>
                   {c.quote ? (
                     <pre className="mt-1 text-[10px] whitespace-pre-wrap text-slate-500 max-h-16 overflow-auto">{c.quote}</pre>

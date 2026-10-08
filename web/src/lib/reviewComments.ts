@@ -15,7 +15,10 @@ export function formatReviewComments(
 ): string {
   if (!comments.length) return '';
   const lines = ['Review comments (fix these hunks; do not unrelated refactors):'];
+  let wrote = 0;
   for (const c of comments) {
+    if ((c.status || '').trim() === 'fixed') continue;
+    wrote++;
     let name = (c.repoId || '').trim();
     if (repoName) {
       const n = (repoName(c.repoId) || '').trim();
@@ -37,5 +40,6 @@ export function formatReviewComments(
     const body = (c.body || '').trim();
     if (body) lines.push(`  ${body}`);
   }
+  if (!wrote) return '';
   return lines.join('\n');
 }

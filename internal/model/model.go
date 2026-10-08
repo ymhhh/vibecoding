@@ -455,6 +455,13 @@ type Issue struct {
 	UpdatedAt         string             `json:"updatedAt"`
 }
 
+// DiffComment statuses for the review → repair → merge gate.
+const (
+	CommentOpen   = "open"
+	CommentFixing = "fixing"
+	CommentFixed  = "fixed"
+)
+
 // DiffComment is a line-anchored review note on a real unified diff.
 type DiffComment struct {
 	ID        string `json:"id"`
@@ -465,7 +472,93 @@ type DiffComment struct {
 	EndLine   int    `json:"endLine"`
 	Quote     string `json:"quote,omitempty"`
 	Body      string `json:"body"`
+	// Status is open | fixing | fixed. Empty means open.
+	Status    string `json:"status,omitempty"`
 	CreatedAt string `json:"createdAt"`
+}
+
+// CommentStatus returns the effective status (empty → open).
+func CommentStatus(c DiffComment) string {
+	switch strings.TrimSpace(c.Status) {
+	case CommentFixing:
+		return CommentFixing
+	case CommentFixed:
+		return CommentFixed
+	default:
+		return CommentOpen
+	}
+}
+
+// HasBlockingReviewComments is true when any comment is still open or being fixed.
+func HasBlockingReviewComments(comments []DiffComment) bool {
+	for _, c := range comments {
+		st := CommentStatus(c)
+		if st == CommentOpen || st == CommentFixing {
+			return true
+		}
+	}
+	return false
+}
+
+// MarkNonFixedCommentsFixing sets open (and already-fixing) comments to fixing.
+func MarkNonFixedCommentsFixing(comments []DiffComment) []DiffComment {
+	if len(comments) == 0 {
+		return comments
+	}
+	out := make([]DiffComment, len(comments))
+	copy(out, comments)
+	for i := range out {
+		if CommentStatus(out[i]) != CommentFixed {
+			out[i].Status = CommentFixing
+		}
+	}
+	return out
+}
+
+// MarkFixingCommentsFixed sets fixing comments to fixed (open/fixed unchanged).
+func MarkFixingCommentsFixed(comments []DiffComment) []DiffComment {
+	if len(comments) == 0 {
+		return comments
+	}
+	out := make([]DiffComment, len(comments))
+	copy(out, comments)
+	for i := range out {
+		if CommentStatus(out[i]) == CommentFixing {
+			out[i].Status = CommentFixed
+		}
+	}
+	return out
+}
+
+// MarkFixingCommentsOpen sets fixing comments back to open (failed/cancelled repair).
+func MarkFixingCommentsOpen(comments []DiffComment) []DiffComment {
+	if len(comments) == 0 {
+		return comments
+	}
+	out := make([]DiffComment, len(comments))
+	copy(out, comments)
+	for i := range out {
+		if CommentStatus(out[i]) == CommentFixing {
+			out[i].Status = CommentOpen
+		}
+	}
+	return out
+}
+
+// IsReviewRepair reports whether this issue looks like an in-review repair run.
+func (iss *Issue) IsReviewRepair() bool {
+	if iss == nil {
+		return false
+	}
+	if strings.TrimSpace(iss.ReviewFeedback) != "" {
+		return true
+	}
+	for _, c := range iss.ReviewComments {
+		if CommentStatus(c) == CommentFixing {
+			return true
+		}
+	}
+	return false
 }
 
 func (iss *Issue) HasSubRequirements() bool {

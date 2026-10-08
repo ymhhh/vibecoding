@@ -142,6 +142,8 @@ export interface AutoDevLog {
   details?: string;
 }
 
+export type DiffCommentStatus = 'open' | 'fixing' | 'fixed';
+
 export interface DiffComment {
   id: string;
   repoId: string;
@@ -151,6 +153,8 @@ export interface DiffComment {
   endLine: number;
   quote?: string;
   body: string;
+  /** open | fixing | fixed; missing means open. */
+  status?: DiffCommentStatus | string;
   createdAt: string;
 }
 

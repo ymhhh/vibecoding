@@ -143,7 +143,7 @@ curl -s http://127.0.0.1:8090/api/health
 4. 创建 **需求（Issue）**，和 AI 对话，提炼 **需求文档**，再写 **开发设计（Dev Spec）**。大需求可拆成子需求，各自一份 Spec。
 5. **确认规格 → Backlog → 启动自治开发**。编码在隔离 worktree：`{data-dir}/worktrees/{issueID}/{repoID}/`，不动你主仓库当前工作区。有子需求时按序实施，每个子需求一次提交。
 6. 看实时日志。成功后进 **In Review**，有真实文件树、unified diff、质量门禁。测试失败会自愈若干轮；仍失败则回 Backlog，并保留 worktree 方便对照。
-7. **Approve & Merge** 在本地把特性分支合进默认分支（若默认分支正被 checkout 且 dirty 会拒绝）。可选 **发布到远端**：push，本机有 `gh` 时再试着开 PR。
+7. **Approve & Merge** 在本地把特性分支合进默认分支（默认分支被 checkout 且 dirty、Auto-Dev 仍在跑、或还有 `open` / `fixing` 行内评审评论时会拒绝）。返工在同一分支修代码（可选「同步进 Dev Spec」）；修复失败仍停在评审。可选 **发布到远端**：push，本机有 `gh` 时再试着开 PR。
 
 设计说明：[docs/autodev-isolation-executor-review.md](./docs/autodev-isolation-executor-review.md)。后续规划：[docs/review-loop-executor-override.md](./docs/review-loop-executor-override.md)。
 

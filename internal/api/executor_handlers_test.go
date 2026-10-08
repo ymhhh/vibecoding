@@ -276,6 +276,54 @@ func TestApproveMergeSuccessRemovesWorktrees(t *testing.T) {
 	}
 }
 
+func TestApproveMergeBlockedByOpenComments(t *testing.T) {
+	srv, store := testServer(t)
+	repoDir := t.TempDir()
+	initRepo(t, repoDir, "main")
+	repo := model.GitRepo{ID: "r1", Name: "demo", Path: repoDir, DefaultBranch: "main"}
+	proj := model.Project{ID: "p1", Name: "p", GitRepos: []model.GitRepo{repo}, CreatedAt: model.NowISO(), UpdatedAt: model.NowISO()}
+	if err := store.UpsertProject(proj); err != nil {
+		t.Fatal(err)
+	}
+	issue := model.Issue{
+		ID: "i-block", ProjectID: "p1", Title: "t", Status: model.StatusInReview,
+		AssociatedRepoIDs: []string{"r1"},
+		PRInfo: &model.PRInfo{
+			ID: "pr1", BranchName: "ai-dev/issue-block", Title: "t", Status: "open",
+			BaseBranch: "main", Author: "bot", CreatedAt: model.NowISO(),
+		},
+		ReviewComments: []model.DiffComment{{
+			ID: "c1", Path: "a.go", Side: "new", StartLine: 1, EndLine: 1,
+			Body: "fix me", Status: model.CommentOpen,
+		}},
+		CreatedAt: model.NowISO(), UpdatedAt: model.NowISO(),
+	}
+	if err := store.UpsertIssue(issue); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/issues/i-block/approve-merge", bytes.NewReader(nil))
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != 409 {
+		t.Fatalf("expected 409 for open comments, got %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "review comments") {
+		t.Fatalf("body=%s", rr.Body.String())
+	}
+
+	issue.ReviewComments[0].Status = model.CommentFixed
+	if err := store.UpsertIssue(issue); err != nil {
+		t.Fatal(err)
+	}
+	// Fixed comments alone should not 409 for comments; may still fail for missing branch.
+	req = httptest.NewRequest(http.MethodPost, "/api/issues/i-block/approve-merge", bytes.NewReader(nil))
+	rr = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code == 409 && strings.Contains(rr.Body.String(), "review comments") {
+		t.Fatalf("fixed comments should not block: %s", rr.Body.String())
+	}
+}
+
 func TestApproveMergeIntoChosenBranch(t *testing.T) {
 	srv, store := testServer(t)
 	repoDir := t.TempDir()

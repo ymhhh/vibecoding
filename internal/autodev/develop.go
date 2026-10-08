@@ -87,7 +87,7 @@ func (r *Runner) developSubs(
 			extra.WriteString(fmt.Sprintf("- sibling [%d] %s (%s)\n", sib.Order, sib.Title, sib.Status))
 		}
 
-		q, err := r.developOne(ctx, job, issue, sessions, cfg, execCfg, sub.DevSpec, sub.Title, firstNonEmpty(sub.Description, issue.PromptDescription()), extra.String(), pStart, pEnd, k == n-1, progress)
+		q, err := r.developOne(ctx, job, issue, sessions, cfg, execCfg, sub.DevSpec, sub.Title, firstNonEmpty(sub.Description, issue.PromptDescription()), withReviewFeedback(issue, extra.String()), pStart, pEnd, k == n-1, progress)
 		if err != nil {
 			sub.Status = model.SubReqFailed
 			issue.UpdatedAt = model.NowISO()
@@ -348,6 +348,23 @@ func (r *Runner) developOne(
 		r.persistAgentSession(issue, sessionID)
 	}
 	return quality, nil
+}
+
+// withReviewFeedback appends in-review repair notes so Auto-Dev can fix code
+// without rewriting the Dev Spec first.
+func withReviewFeedback(issue *model.Issue, base string) string {
+	fb := ""
+	if issue != nil {
+		fb = strings.TrimSpace(issue.ReviewFeedback)
+	}
+	if fb == "" {
+		return base
+	}
+	part := "Reviewer rework feedback (fix these issues on the existing branch; do not unrelated refactors):\n" + fb
+	if strings.TrimSpace(base) == "" {
+		return part
+	}
+	return strings.TrimSpace(base) + "\n\n" + part
 }
 
 func issueShortID(issueID string) string {
