@@ -158,21 +158,11 @@ Pick wantedFiles to read next.`,
 		prevSpec = issue.DevSpec.RawMarkdown
 	}
 
-	pass2System := `You are a Senior VibeCoding AI Architect writing a Development Spec from REAL local source excerpts.
-The excerpts below were scanned from associated local repositories on this machine. Do NOT claim you cannot read local code.
-
-Return ONLY JSON:
-- chatReply: short reply (2-8 sentences)
-- rawMarkdown: COMPLETE Dev Spec Markdown with Title, Summary, Architecture, Target Files, Implementation Steps, Test Cases
-- title, summary, architectureDesign
-- fileChanges: [{filePath, repoName, action(create|modify|delete), summary, symbol}]
-- implementationSteps, testCases
-
-Rules:
-- Only cite paths/symbols that appear in the excerpts (create may propose new relative paths under a known repoName).
-- Each fileChange must include repoName and a concrete filePath.
-- Stay within THIS scope only: ` + scopeLabel + `
-- If Previous Dev Spec is non-empty and the user asks to revise/improve/补充, merge their request into a COMPLETE updated rawMarkdown (do not leave the changes only in chatReply).`
+	devTemplate := ""
+	if proj != nil {
+		devTemplate = proj.DevSpecPromptTemplate
+	}
+	pass2System := llm.DevSpecSystem(devTemplate, scopeLabel)
 
 	pass2User := fmt.Sprintf(`Issue: %s
 Scope: %s

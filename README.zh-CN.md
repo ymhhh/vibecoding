@@ -139,13 +139,29 @@ curl -s http://127.0.0.1:8090/api/health
 
 1. 打开 **LLM 设置**，填完整的 chat-completions 地址和 API Key（只存在本地 SQLite）。
 2. 可选：在同一设置里选 **编码执行器**——默认内置 LLM（VibeBot）；也可换本机已装好并登录的 Claude Code / Cursor / Codex / 自定义 CLI。
-3. 创建 **项目**，添加本地 git 仓库路径，点 **Validate path** 校验。
+3. 创建 **项目**，添加本地 git 仓库路径，点 **Validate path** 校验。可选：在项目设置的 **文档提示词模板** 里自定义需求文档 / 开发设计的系统提示词（见下节）。
 4. 创建 **需求（Issue）**，和 AI 对话，提炼 **需求文档**，再写 **开发设计（Dev Spec）**。大需求可拆成子需求，各自一份 Spec。
 5. **确认规格 → Backlog → 启动自治开发**。编码在隔离 worktree：`{data-dir}/worktrees/{issueID}/{repoID}/`，不动你主仓库当前工作区。有子需求时按序实施，每个子需求一次提交。
 6. 看实时日志。成功后进 **In Review**，有真实文件树、unified diff、质量门禁。测试失败会自愈若干轮；仍失败则回 Backlog，并保留 worktree 方便对照。
 7. **Approve & Merge** 在本地把特性分支合进默认分支（若默认分支正被 checkout 且 dirty 会拒绝）。可选 **发布到远端**：push，本机有 `gh` 时再试着开 PR。
 
 设计说明：[docs/autodev-isolation-executor-review.md](./docs/autodev-isolation-executor-review.md)。后续规划：[docs/review-loop-executor-override.md](./docs/review-loop-executor-override.md)。
+
+### 项目级文档提示词模板
+
+不同项目对需求文档、开发设计的章节结构与术语要求可能不同。可在 **项目设置 → 文档提示词模板** 配置两套可选模板：
+
+| 模板 | 生效时机 |
+|------|----------|
+| 需求文档提示词 | 提炼 / 修订需求文档（`POST /api/issues/{id}/req-doc`） |
+| 开发设计提示词 | 生成 / 修订开发设计（设计 pass 2） |
+
+- **留空** = 使用内置默认提示词，行为与未配置时一致。
+- 模板挂在**项目**上，该项目下所有 Issue 共用；不支持单条 Issue 覆盖，也不按仓库拆多套。
+- 只替换对应的 **system prompt**；源码摘录、对话上下文、JSON 回写与解析流程不变。
+- 自定义时须保留 JSON 契约字段（如 `chatReply`、`rawMarkdown` 及结构化字段），否则提炼/设计会失败。可用「恢复默认」一键回到内置文案，「清空」则改回使用内置。
+- 开发设计模板可用 `{{scope}}` 表示当前范围标签（整单或某个子需求）；未写占位符时后端会自动追加一条 scope 约束。
+- **不在此配置**：头脑风暴 Chat、拆分子需求、选文件 pass 1、以及 Auto-Dev / 执行器提示词（执行器用全局设置；仓库约定见下方 `AGENTS.md`）。
 
 ### 给仓库写约定（`AGENTS.md`）
 

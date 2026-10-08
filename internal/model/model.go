@@ -202,8 +202,14 @@ type Project struct {
 	BranchPrefixConfig   *BranchPrefixConfig `json:"branchPrefixConfig,omitempty"`
 	CustomModelConfig    *ModelConfig        `json:"customModelConfig,omitempty"`
 	UseCustomModelConfig bool                `json:"useCustomModelConfig"`
-	CreatedAt            string              `json:"createdAt"`
-	UpdatedAt            string              `json:"updatedAt"`
+	// ReqDocPromptTemplate overrides the system prompt for requirement extract/revise.
+	// Empty means use the built-in default.
+	ReqDocPromptTemplate string `json:"reqDocPromptTemplate,omitempty"`
+	// DevSpecPromptTemplate overrides the system prompt for design-spec generation (pass 2).
+	// Empty means use the built-in default. May include "{{scope}}" for the current scope label.
+	DevSpecPromptTemplate string `json:"devSpecPromptTemplate,omitempty"`
+	CreatedAt             string `json:"createdAt"`
+	UpdatedAt             string `json:"updatedAt"`
 }
 
 type ChatMessage struct {

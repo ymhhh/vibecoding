@@ -48,6 +48,10 @@ export interface Project {
   branchPrefixConfig?: BranchPrefixConfig; // 工程级别 Git 分支前缀规范配置
   customModelConfig?: ModelConfig;
   useCustomModelConfig: boolean;
+  /** Overrides requirement extract/revise system prompt; empty = built-in default. */
+  reqDocPromptTemplate?: string;
+  /** Overrides design-spec (pass 2) system prompt; empty = built-in default. */
+  devSpecPromptTemplate?: string;
   createdAt: string;
   updatedAt: string;
 }

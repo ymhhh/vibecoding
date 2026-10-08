@@ -4,6 +4,7 @@ import { DEFAULT_GLOBAL_MODEL_CONFIG, DEFAULT_BRANCH_PREFIX_CONFIG } from '../da
 import { Language, ThemeStyle, getTranslation } from '../lib/i18n';
 import { THEME_CONFIGS } from '../lib/theme';
 import { api } from '../lib/api';
+import { DEFAULT_DEV_SPEC_SYSTEM, DEFAULT_REQ_DOC_SYSTEM } from '../lib/docPrompts';
 import { ThemedSelect } from './ThemedSelect';
 import { testOpenAPIConnection, fetchAvailableModels } from '../lib/llm';
 import {
@@ -117,7 +118,13 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   };
 
 
-  const [activeTab, setActiveTab] = useState<'basic' | 'repos' | 'branches' | 'llm'>('basic');
+  const [activeTab, setActiveTab] = useState<'basic' | 'repos' | 'branches' | 'prompts' | 'llm'>('basic');
+  const [reqDocPromptTemplate, setReqDocPromptTemplate] = useState(
+    existingProject?.reqDocPromptTemplate || ''
+  );
+  const [devSpecPromptTemplate, setDevSpecPromptTemplate] = useState(
+    existingProject?.devSpecPromptTemplate || ''
+  );
 
   const handleTestProjectLLM = async () => {
     setTestingLLM(true);
@@ -254,6 +261,9 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
         // Empty draft keeps the server-side key (same as global LLM settings).
         openAIApiKey: apiKeyDraft.trim(),
       },
+      // Empty string clears a previously saved template (PUT replaces the whole project JSON).
+      reqDocPromptTemplate: reqDocPromptTemplate.trim(),
+      devSpecPromptTemplate: devSpecPromptTemplate.trim(),
       createdAt: existingProject?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -324,6 +334,18 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
           >
             <GitFork className="w-4 h-4" />
             分支前缀规范
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('prompts')}
+            className={`py-3 border-b-2 flex items-center gap-2 transition-colors ${
+              activeTab === 'prompts'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-300 font-bold'
+                : `border-transparent ${themeConfig.textSecondary} hover:${themeConfig.textPrimary}`
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            {t.docPromptTemplates}
           </button>
           <button
             type="button"
@@ -690,6 +712,85 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                   />
                   <p className={`text-[10px] ${themeConfig.textMuted}`}>里程碑版本预封包与发布测试分支</p>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'prompts' && (
+            <div className="space-y-5">
+              <div
+                className={`rounded-xl border px-3.5 py-3 flex gap-2.5 ${
+                  isLight
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                }`}
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-relaxed">{t.docPromptTemplatesHint}</p>
+              </div>
+
+              <div className={`p-4 rounded-xl border space-y-2 ${themeConfig.cardBg} ${themeConfig.cardBorder}`}>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className={`text-xs font-semibold ${themeConfig.textPrimary}`}>
+                    {t.reqDocPromptTemplate}
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setReqDocPromptTemplate(DEFAULT_REQ_DOC_SYSTEM)}
+                      className={`px-2 py-1 text-[10px] font-semibold rounded-lg border ${themeConfig.btnSecondary} ${themeConfig.btnSecondaryText}`}
+                    >
+                      {t.restoreDefaultPrompt}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReqDocPromptTemplate('')}
+                      className={`px-2 py-1 text-[10px] font-semibold rounded-lg border ${themeConfig.btnSecondary} ${themeConfig.btnSecondaryText}`}
+                    >
+                      {t.clearPromptTemplate}
+                    </button>
+                  </div>
+                </div>
+                <p className={`text-[10px] ${themeConfig.textMuted}`}>{t.reqDocPromptTemplateHint}</p>
+                <textarea
+                  rows={12}
+                  value={reqDocPromptTemplate}
+                  onChange={(e) => setReqDocPromptTemplate(e.target.value)}
+                  placeholder={DEFAULT_REQ_DOC_SYSTEM}
+                  className={`w-full px-3 py-2 border rounded-xl text-[11px] font-mono leading-relaxed focus:outline-none focus:border-indigo-500 ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
+                />
+              </div>
+
+              <div className={`p-4 rounded-xl border space-y-2 ${themeConfig.cardBg} ${themeConfig.cardBorder}`}>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className={`text-xs font-semibold ${themeConfig.textPrimary}`}>
+                    {t.devSpecPromptTemplate}
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDevSpecPromptTemplate(DEFAULT_DEV_SPEC_SYSTEM)}
+                      className={`px-2 py-1 text-[10px] font-semibold rounded-lg border ${themeConfig.btnSecondary} ${themeConfig.btnSecondaryText}`}
+                    >
+                      {t.restoreDefaultPrompt}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDevSpecPromptTemplate('')}
+                      className={`px-2 py-1 text-[10px] font-semibold rounded-lg border ${themeConfig.btnSecondary} ${themeConfig.btnSecondaryText}`}
+                    >
+                      {t.clearPromptTemplate}
+                    </button>
+                  </div>
+                </div>
+                <p className={`text-[10px] ${themeConfig.textMuted}`}>{t.devSpecPromptTemplateHint}</p>
+                <textarea
+                  rows={12}
+                  value={devSpecPromptTemplate}
+                  onChange={(e) => setDevSpecPromptTemplate(e.target.value)}
+                  placeholder={DEFAULT_DEV_SPEC_SYSTEM}
+                  className={`w-full px-3 py-2 border rounded-xl text-[11px] font-mono leading-relaxed focus:outline-none focus:border-indigo-500 ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
+                />
               </div>
             </div>
           )}

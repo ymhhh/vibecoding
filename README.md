@@ -139,13 +139,29 @@ curl -s http://127.0.0.1:8090/api/health
 
 1. Open **LLM settings** — save the full chat-completions URL and API key (stored only in local SQLite).
 2. Optionally pick a **coding executor**: built-in LLM (VibeBot) by default, or Claude Code / Cursor / Codex / custom CLI if installed and logged in on this machine.
-3. Create a **Project**, add a local git repository path, click **Validate path**.
+3. Create a **Project**, add a local git repository path, click **Validate path**. Optionally customize requirement / design **doc prompt templates** in project settings (see below).
 4. Create an **Issue**, chat with the AI, extract the **requirement document**, then the **Dev Spec**. Large issues can be split into sub-requirements (each with its own Spec).
 5. **Accept Spec → Backlog**, then **Start Auto-Dev**. Work runs in isolated git worktrees under `{data-dir}/worktrees/{issueID}/{repoID}/` so your main checkout stays untouched. One commit per sub-requirement when split.
 6. Watch live logs. On success the issue moves to **In Review** with a real file tree, unified diff, and quality-gate results. Failed tests may auto-heal a few rounds; still failing → back to Backlog, worktree kept for inspection.
 7. **Approve & Merge** merges the feature branch into the repo default branch locally (refuses if that branch is checked out and dirty). Optional **Publish to remote** pushes and may run `gh pr create` when `gh` is installed.
 
 Design notes: [docs/autodev-isolation-executor-review.md](./docs/autodev-isolation-executor-review.md). Follow-ups: [docs/review-loop-executor-override.md](./docs/review-loop-executor-override.md).
+
+### Project-level doc prompt templates
+
+Projects often need different section structures and terminology for requirement docs and Dev Specs. In **Project settings → Doc prompt templates**, you can set two optional templates:
+
+| Template | When it applies |
+|----------|-----------------|
+| Requirement document prompt | Extracting / revising the requirement doc (`POST /api/issues/{id}/req-doc`) |
+| Development spec prompt | Generating / revising the design doc (design pass 2) |
+
+- **Empty** = built-in default (same behavior as before).
+- Templates live on the **project** and apply to every issue in that project. No per-issue override; no per-repo copies.
+- Only the matching **system prompt** is replaced. Source excerpts, chat context, and the JSON write-back / parse flow stay the same.
+- Keep the JSON contract (`chatReply`, `rawMarkdown`, and structured fields) or extract/design will fail. Use **Restore default** to reload the built-in text, or **Clear** to fall back to built-in without storing a copy.
+- In the design template, `{{scope}}` is replaced with the current scope label (parent issue or a sub-requirement). If the placeholder is missing, the server appends a scope rule.
+- **Not configured here:** brainstorm chat, requirement split, design file-locate pass 1, or Auto-Dev / executor prompts (executor is global settings; repo conventions use `AGENTS.md` below).
 
 ### Tell Auto-Dev about your repo (`AGENTS.md`)
 
