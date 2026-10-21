@@ -380,6 +380,9 @@ export const TRANSLATIONS = {
     shellDrawer: 'Drawer',
     shellFullscreen: 'Full screen',
     shellHint: 'Issue open mode',
+    presetRequirement: 'Requirement',
+    presetCoding: 'Coding',
+    presetReview: 'Review',
   },
 
   zh: {
@@ -757,6 +760,9 @@ export const TRANSLATIONS = {
     shellDrawer: '抽屉',
     shellFullscreen: '全屏',
     shellHint: 'Issue 打开方式',
+    presetRequirement: '需求',
+    presetCoding: '编码',
+    presetReview: '评审',
   },
 };
 

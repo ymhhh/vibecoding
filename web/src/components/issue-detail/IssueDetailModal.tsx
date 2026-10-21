@@ -3,7 +3,13 @@ import { createPortal } from 'react-dom';
 import { Issue, GitRepo, ModelConfig, BranchPrefixConfig, SubRequirement, DiffComment } from '../../types';
 import { Language, getTranslation, ThemeStyle } from '../../lib/i18n';
 import { THEME_CONFIGS } from '../../lib/theme';
-import { Density, IssueShell } from '../../lib/storage';
+import {
+  Density,
+  IssueShell,
+  WorkspacePreset,
+  loadIssuePreset,
+  saveIssuePreset,
+} from '../../lib/storage';
 import { api } from '../../lib/api';
 import { hasSubRequirements, specMarkdownForExport, reqMarkdownForExport, visibleSpec, coerceReqMarkdown, coerceDocMarkdown, coerceDevSpec, backlogBlockReason, hasUnverifiedModifies } from '../../lib/subreq';
 import { formatReviewComments } from '../../lib/reviewComments';
@@ -73,7 +79,19 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const t = getTranslation(lang);
 
-  const [activeTab, setActiveTab] = useState<'chat' | 'spec' | 'console' | 'review'>('chat');
+  const [preset, setPresetState] = useState<WorkspacePreset>(() =>
+    loadIssuePreset(issue.id, issue.status)
+  );
+  const setPreset = (next: WorkspacePreset) => {
+    setPresetState(next);
+    saveIssuePreset(issue.id, next);
+  };
+  /** Map legacy tab targets onto workspace presets for existing child call sites. */
+  const setActiveTab = (tab: 'chat' | 'spec' | 'console' | 'review') => {
+    if (tab === 'console') setPreset('coding');
+    else if (tab === 'review') setPreset('review');
+    else setPreset('requirement');
+  };
   const [editingSpec, setEditingSpec] = useState(false);
 
   const [specMarkdown, setSpecMarkdown] = useState(issue.devSpec?.rawMarkdown || '');
@@ -134,15 +152,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
     setSelectedScope('all');
     setReworkScope('all');
     setExportHint('');
-    if (issue.status === 'requirements') {
-      setActiveTab('chat');
-    } else if (issue.status === 'backlog') {
-      setActiveTab('spec');
-    } else if (issue.status === 'in_progress') {
-      setActiveTab('console');
-    } else if (issue.status === 'in_review' || issue.status === 'completed') {
-      setActiveTab('review');
-    }
+    setPresetState(loadIssuePreset(issue.id, issue.status));
   }, [issue.id]);
 
   useEffect(() => {
@@ -246,7 +256,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [visibleMessages, activeTab]);
+  }, [visibleMessages, preset]);
 
   useEffect(() => {
     onBusyChange?.(isSending);
@@ -589,72 +599,76 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
 
         <IssueDetailTabs
           issue={issue}
-          splitIssue={splitIssue}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          preset={preset}
+          setPreset={setPreset}
           lang={lang}
           themeStyle={themeStyle}
         />
 
-        {/* Tab Content Body */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {activeTab === 'chat' && (
-            <IssueChatTab
-              issue={issue}
-              splitIssue={splitIssue}
-              visibleMessages={visibleMessages}
-              selectedScope={selectedScope}
-              setSelectedScope={setSelectedScope}
-              lang={lang}
-              themeStyle={themeStyle}
-              isSending={isSending}
-              chatError={chatError}
-              inputPrompt={inputPrompt}
-              setInputPrompt={setInputPrompt}
-              modelProcess={modelProcess}
-              setModelProcess={setModelProcess}
-              abortRef={abortRef}
-              messagesEndRef={messagesEndRef}
-              handleSendMessage={handleSendMessage}
-              pendingLlm={pendingLlm}
-              onRetrySession={handleRetrySession}
-              onRegenerate={handleRegenerate}
-            />
-          )}
+        {/* Keep all panels mounted so draft text survives preset switches. */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          <div
+            className={`flex-1 overflow-hidden min-h-0 ${
+              preset === 'requirement' ? 'flex flex-col lg:flex-row' : 'hidden'
+            }`}
+          >
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col border-b lg:border-b-0 lg:border-r border-inherit">
+              <IssueChatTab
+                issue={issue}
+                splitIssue={splitIssue}
+                visibleMessages={visibleMessages}
+                selectedScope={selectedScope}
+                setSelectedScope={setSelectedScope}
+                lang={lang}
+                themeStyle={themeStyle}
+                isSending={isSending}
+                chatError={chatError}
+                inputPrompt={inputPrompt}
+                setInputPrompt={setInputPrompt}
+                modelProcess={modelProcess}
+                setModelProcess={setModelProcess}
+                abortRef={abortRef}
+                messagesEndRef={messagesEndRef}
+                handleSendMessage={handleSendMessage}
+                pendingLlm={pendingLlm}
+                onRetrySession={handleRetrySession}
+                onRegenerate={handleRegenerate}
+              />
+            </div>
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
+              <IssueSpecTab
+                issue={issue}
+                splitIssue={splitIssue}
+                activeSub={activeSub}
+                currentSpec={currentSpec}
+                selectedScope={selectedScope}
+                setSelectedScope={setSelectedScope}
+                lang={lang}
+                themeStyle={themeStyle}
+                editingSpec={editingSpec}
+                setEditingSpec={setEditingSpec}
+                specMarkdown={specMarkdown}
+                setSpecMarkdown={setSpecMarkdown}
+                reqMarkdown={reqMarkdown}
+                setReqMarkdown={setReqMarkdown}
+                exporting={exporting}
+                exportHint={exportHint}
+                chatError={chatError}
+                isSending={isSending}
+                setActiveTab={setActiveTab}
+                handleSendMessage={handleSendMessage}
+                handleExportDevSpec={handleExportDevSpec}
+                handleExportReqDoc={handleExportReqDoc}
+                handleScheduleToBacklog={handleScheduleToBacklog}
+                onUpdateIssue={onUpdateIssue}
+                pendingLlm={pendingLlm}
+                onRetrySession={handleRetrySession}
+                onRegenerate={handleRegenerate}
+              />
+            </div>
+          </div>
 
-          {activeTab === 'spec' && (
-            <IssueSpecTab
-              issue={issue}
-              splitIssue={splitIssue}
-              activeSub={activeSub}
-              currentSpec={currentSpec}
-              selectedScope={selectedScope}
-              setSelectedScope={setSelectedScope}
-              lang={lang}
-              themeStyle={themeStyle}
-              editingSpec={editingSpec}
-              setEditingSpec={setEditingSpec}
-              specMarkdown={specMarkdown}
-              setSpecMarkdown={setSpecMarkdown}
-              reqMarkdown={reqMarkdown}
-              setReqMarkdown={setReqMarkdown}
-              exporting={exporting}
-              exportHint={exportHint}
-              chatError={chatError}
-              isSending={isSending}
-              setActiveTab={setActiveTab}
-              handleSendMessage={handleSendMessage}
-              handleExportDevSpec={handleExportDevSpec}
-              handleExportReqDoc={handleExportReqDoc}
-              handleScheduleToBacklog={handleScheduleToBacklog}
-              onUpdateIssue={onUpdateIssue}
-              pendingLlm={pendingLlm}
-              onRetrySession={handleRetrySession}
-              onRegenerate={handleRegenerate}
-            />
-          )}
-
-          {activeTab === 'console' && (
+          <div className={`flex-1 overflow-hidden flex flex-col min-h-0 ${preset === 'coding' ? '' : 'hidden'}`}>
             <IssueConsoleTab
               issue={issue}
               splitIssue={splitIssue}
@@ -664,9 +678,9 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
               themeStyle={themeStyle}
               onStartAutoDev={onStartAutoDev}
             />
-          )}
+          </div>
 
-          {activeTab === 'review' && (
+          <div className={`flex-1 overflow-hidden flex flex-col min-h-0 ${preset === 'review' ? '' : 'hidden'}`}>
             <IssueReviewTab
               issue={issue}
               splitIssue={splitIssue}
@@ -687,7 +701,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
               publishingRemote={publishingRemote}
               onCommentsChange={handleCommentsChange}
             />
-          )}
+          </div>
         </div>
       </div>
     </div>

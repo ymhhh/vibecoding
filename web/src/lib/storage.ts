@@ -2,6 +2,7 @@ import { Language, ThemeStyle } from './i18n';
 
 export type IssueShell = 'modal' | 'drawer' | 'fullscreen';
 export type Density = 'comfortable' | 'compact';
+export type WorkspacePreset = 'requirement' | 'coding' | 'review';
 
 const STORAGE_KEYS = {
   LANGUAGE: 'vibe_app_language',
@@ -11,6 +12,7 @@ const STORAGE_KEYS = {
   ACTIVITY_OPEN: 'vibe_app_activity_open',
   ACTIVITY_WIDTH: 'vibe_app_activity_width',
   COMPLETED_COLUMN_COLLAPSED: 'vibe_app_completed_column_collapsed',
+  ISSUE_PRESETS: 'vibe_app_issue_presets',
 };
 
 const DEFAULT_ACTIVITY_WIDTH = 320;
@@ -148,6 +150,37 @@ export function loadCompletedColumnCollapsed(): boolean {
 export function saveCompletedColumnCollapsed(collapsed: boolean): void {
   try {
     localStorage.setItem(STORAGE_KEYS.COMPLETED_COLUMN_COLLAPSED, collapsed ? 'true' : 'false');
+  } catch {
+    /* ignore */
+  }
+}
+
+export function defaultPresetForStatus(status: string): WorkspacePreset {
+  if (status === 'in_progress') return 'coding';
+  if (status === 'in_review' || status === 'completed') return 'review';
+  return 'requirement';
+}
+
+export function loadIssuePreset(issueId: string, status: string): WorkspacePreset {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ISSUE_PRESETS);
+    if (raw) {
+      const map = JSON.parse(raw) as Record<string, string>;
+      const v = map?.[issueId];
+      if (v === 'requirement' || v === 'coding' || v === 'review') return v;
+    }
+  } catch {
+    /* ignore */
+  }
+  return defaultPresetForStatus(status);
+}
+
+export function saveIssuePreset(issueId: string, preset: WorkspacePreset): void {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ISSUE_PRESETS);
+    const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    map[issueId] = preset;
+    localStorage.setItem(STORAGE_KEYS.ISSUE_PRESETS, JSON.stringify(map));
   } catch {
     /* ignore */
   }
