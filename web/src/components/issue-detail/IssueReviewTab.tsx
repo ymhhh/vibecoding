@@ -203,6 +203,7 @@ export const IssueReviewTab: React.FC<IssueReviewTabProps> = ({
               type="button"
               onClick={() => void handleReworkByComments()}
               disabled={!openCommentCount}
+              title={!openCommentCount ? t.reworkByCommentsNeed : t.reworkByCommentsHint}
               className="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-800 dark:text-amber-200 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <RotateCcw className="w-3.5 h-3.5" />

@@ -346,13 +346,20 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
   };
 
   const handleReworkByComments = async () => {
-    const comments = issue.reviewComments || [];
+    const comments = (issue.reviewComments || []).filter((c) => {
+      const st = (c.status || 'open').trim();
+      return st === 'open' || st === 'fixing' || st === '';
+    });
     if (!comments.length) {
       setChatError(t.reworkByCommentsNeed);
       return;
     }
     const repoName = (id: string) => gitRepos.find((r) => r.id === id)?.name || id;
     const formatted = formatReviewComments(comments, repoName);
+    if (!formatted.trim()) {
+      setChatError(t.reworkByCommentsNeed);
+      return;
+    }
     const extra = reworkFeedback.trim();
     const combined = extra ? `${extra}\n\n${formatted}` : formatted;
     await submitRework(combined, true);
@@ -409,15 +416,14 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
     setSyncReworkToSpec(false);
 
     if (syncSpec) {
-      setActiveTab('chat');
+      setPreset('requirement');
       const prompt =
         lang === 'zh'
           ? `开发者在评审中指出了以下问题，需要二次修改代码与开发文档（范围: ${targetLabel}）:\n"${feedback}"\n请重新分析并更新对应待开发文档。`
           : `Reviewer requested rework for ${targetLabel}:\n"${feedback}"\nPlease revise the Dev Spec(s) accordingly.`;
       await handleSendMessage(prompt, { forceSpecSync: true, scope });
-    } else {
-      setActiveTab('console');
     }
+    setPreset('coding');
     onStartAutoDev(issue.id, scope === 'all' ? undefined : scope);
   };
 

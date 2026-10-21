@@ -383,6 +383,7 @@ export const TRANSLATIONS = {
     presetRequirement: 'Requirement',
     presetCoding: 'Coding',
     presetReview: 'Review',
+    reworkByCommentsHint: 'Starts Auto-Dev again on the same branch and worktree, resuming the prior agent session when the executor is unchanged.',
   },
 
   zh: {
@@ -763,6 +764,7 @@ export const TRANSLATIONS = {
     presetRequirement: '需求',
     presetCoding: '编码',
     presetReview: '评审',
+    reworkByCommentsHint: '在同一分支和 worktree 上再次启动自治开发；执行器未变时会续上一次的 agent 会话。',
   },
 };
 
