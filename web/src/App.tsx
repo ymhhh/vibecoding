@@ -1,6 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Project, Issue, ModelConfig, IssueStatus, ExecutorConfig } from './types';
-import { loadLanguage, saveLanguage, loadThemeStyle, saveThemeStyle } from './lib/storage';
+import {
+  loadLanguage,
+  saveLanguage,
+  loadThemeStyle,
+  saveThemeStyle,
+  loadIssueShell,
+  saveIssueShell,
+  loadDensity,
+  saveDensity,
+  loadActivityOpen,
+  saveActivityOpen,
+  loadActivityWidth,
+  saveActivityWidth,
+  loadCompletedColumnCollapsed,
+  saveCompletedColumnCollapsed,
+  clampActivityWidth,
+  IssueShell,
+  Density,
+} from './lib/storage';
 import { Language, ThemeStyle, getTranslation } from './lib/i18n';
 import { THEME_CONFIGS } from './lib/theme';
 import { api, subscribeJobEvents, getAPIToken, setAPIToken } from './lib/api';
@@ -31,6 +49,8 @@ import {
   Sparkles,
   Activity,
   ChevronDown,
+  Rows3,
+  Rows2,
 } from 'lucide-react';
 import { isDesktopApp, toggleDesktopMaximize } from './lib/desktop';
 
@@ -86,13 +106,19 @@ export default function App() {
   const [startPick, setStartPick] = useState<{ issueId: string; subRequirementId?: string } | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-  const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [isActivityOpen, setIsActivityOpen] = useState(loadActivityOpen);
+  const [activityWidth, setActivityWidth] = useState(loadActivityWidth);
+  const [issueShell, setIssueShell] = useState<IssueShell>(loadIssueShell);
+  const [density, setDensity] = useState<Density>(loadDensity);
+  const [completedColumnCollapsed, setCompletedColumnCollapsed] = useState(loadCompletedColumnCollapsed);
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
+  const [layoutReady, setLayoutReady] = useState(false);
 
   const autoDevJobs = useRef<Map<string, string>>(new Map()); // issueId -> jobId
   const unsubscribers = useRef<Map<string, () => void>>(new Map());
   const projectDropdownRef = useRef<HTMLDivElement>(null);
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const activityResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const t = getTranslation(language);
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
@@ -163,6 +189,27 @@ export default function App() {
         if (prefs.themeStyle && ['glass', 'slate', 'light', 'oled', 'oat'].includes(prefs.themeStyle)) {
           setThemeStyle(prefs.themeStyle as ThemeStyle);
         }
+        if (prefs.issueShell === 'modal' || prefs.issueShell === 'drawer' || prefs.issueShell === 'fullscreen') {
+          setIssueShell(prefs.issueShell);
+          saveIssueShell(prefs.issueShell);
+        }
+        if (prefs.density === 'comfortable' || prefs.density === 'compact') {
+          setDensity(prefs.density);
+          saveDensity(prefs.density);
+        }
+        if (typeof prefs.activityOpen === 'boolean') {
+          setIsActivityOpen(prefs.activityOpen);
+          saveActivityOpen(prefs.activityOpen);
+        }
+        if (typeof prefs.activityWidth === 'number') {
+          const width = clampActivityWidth(prefs.activityWidth);
+          setActivityWidth(width);
+          saveActivityWidth(width);
+        }
+        if (typeof prefs.completedColumnCollapsed === 'boolean') {
+          setCompletedColumnCollapsed(prefs.completedColumnCollapsed);
+          saveCompletedColumnCollapsed(prefs.completedColumnCollapsed);
+        }
         const allIssues = await api.listIssues();
         if (cancelled) return;
         const counts: Record<string, number> = {};
@@ -176,7 +223,10 @@ export default function App() {
       } catch (err: any) {
         if (!cancelled) setLoadError(err.message || getTranslation(loadLanguage()).loadBackendFailed);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setLayoutReady(true);
+        }
       }
     })();
     return () => {
@@ -200,11 +250,71 @@ export default function App() {
   }, [themeStyle, themeConfig.isLight]);
 
   useEffect(() => {
-    if (!activeProjectId && !language && !themeStyle) return;
+    saveIssueShell(issueShell);
+  }, [issueShell]);
+
+  useEffect(() => {
+    saveDensity(density);
+  }, [density]);
+
+  useEffect(() => {
+    saveActivityOpen(isActivityOpen);
+  }, [isActivityOpen]);
+
+  useEffect(() => {
+    saveActivityWidth(activityWidth);
+  }, [activityWidth]);
+
+  useEffect(() => {
+    saveCompletedColumnCollapsed(completedColumnCollapsed);
+  }, [completedColumnCollapsed]);
+
+  useEffect(() => {
+    if (!layoutReady) return;
     api
-      .putUIPrefs({ language, themeStyle, activeProjectId })
+      .putUIPrefs({
+        language,
+        themeStyle,
+        activeProjectId,
+        issueShell,
+        density,
+        activityOpen: isActivityOpen,
+        activityWidth,
+        completedColumnCollapsed,
+      })
       .catch(() => undefined);
-  }, [language, themeStyle, activeProjectId]);
+  }, [
+    layoutReady,
+    language,
+    themeStyle,
+    activeProjectId,
+    issueShell,
+    density,
+    isActivityOpen,
+    activityWidth,
+    completedColumnCollapsed,
+  ]);
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const drag = activityResizeRef.current;
+      if (!drag) return;
+      // Activity panel is on the right; dragging the left edge leftward grows width.
+      const next = clampActivityWidth(drag.startWidth + (drag.startX - e.clientX));
+      setActivityWidth(next);
+    };
+    const onUp = () => {
+      activityResizeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, []);
 
   useEffect(() => {
     if (!activeProjectId) {
@@ -946,6 +1056,27 @@ export default function App() {
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 no-squeeze">
             <button
               type="button"
+              onClick={() => setDensity((d) => (d === 'compact' ? 'comfortable' : 'compact'))}
+              className={`header-action-btn rounded-xl font-medium border flex items-center gap-1.5 transition-all shadow-2xs ${
+                density === 'compact'
+                  ? 'bg-indigo-600 text-white border-indigo-500'
+                  : isLight
+                    ? 'bg-slate-100/90 hover:bg-slate-200/90 border-slate-300 text-slate-700'
+                    : 'bg-slate-900/80 hover:bg-slate-800 border-white/15 text-slate-300'
+              }`}
+              title={`${t.densityHint}: ${density === 'compact' ? t.densityCompact : t.densityComfortable}`}
+            >
+              {density === 'compact' ? (
+                <Rows2 className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <Rows3 className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span className="hidden xl:inline fluid-text-xs font-medium">
+                {density === 'compact' ? t.densityCompact : t.densityComfortable}
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={() => setIsActivityOpen((v) => !v)}
               className={`header-action-btn rounded-xl font-medium border flex items-center gap-1.5 transition-all shadow-2xs ${
                 isActivityOpen
@@ -1062,6 +1193,9 @@ export default function App() {
                 analyzingIssueIds={analyzingIssueIds}
                 lang={language}
                 themeStyle={themeStyle}
+                density={density}
+                completedColumnCollapsed={completedColumnCollapsed}
+                onCompletedColumnCollapsedChange={setCompletedColumnCollapsed}
               />
             ) : (
               <div className={`flex-1 flex flex-col items-center justify-center gap-3 ${themeConfig.textSecondary}`}>
@@ -1080,8 +1214,24 @@ export default function App() {
           </div>
           {isActivityOpen && (
             <aside
-              className={`w-80 max-w-[40vw] border-l shrink-0 ${themeConfig.sidebarBg} ${themeConfig.subtleBorder}`}
+              className={`relative max-w-[40vw] border-l shrink-0 ${themeConfig.sidebarBg} ${themeConfig.subtleBorder}`}
+              style={{ width: activityWidth }}
             >
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t.resizeActivityPanel}
+                title={t.resizeActivityPanel}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  activityResizeRef.current = { startX: e.clientX, startWidth: activityWidth };
+                  document.body.style.cursor = 'col-resize';
+                  document.body.style.userSelect = 'none';
+                }}
+                className={`absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 cursor-col-resize z-10 hover:bg-indigo-500/40 active:bg-indigo-500/60 ${
+                  isLight ? 'bg-transparent' : 'bg-transparent'
+                }`}
+              />
               <ActivityTimeline
                 activeProject={activeProject || null}
                 issues={activeIssues}
@@ -1136,6 +1286,7 @@ export default function App() {
             projectId={activeProject?.id}
             lang={language}
             themeStyle={themeStyle}
+            density={density}
           />
         );
       })}

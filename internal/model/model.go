@@ -987,9 +987,14 @@ func (iss *Issue) ReadySubCount() (ready, total int) {
 }
 
 type UIPrefs struct {
-	Language        string `json:"language"`
-	ThemeStyle      string `json:"themeStyle"`
-	ActiveProjectID string `json:"activeProjectId"`
+	Language                  string `json:"language"`
+	ThemeStyle                string `json:"themeStyle"`
+	ActiveProjectID           string `json:"activeProjectId"`
+	IssueShell                string `json:"issueShell,omitempty"`                // modal | drawer | fullscreen
+	Density                   string `json:"density,omitempty"`                   // comfortable | compact
+	ActivityOpen              *bool  `json:"activityOpen,omitempty"`
+	ActivityWidth             int    `json:"activityWidth,omitempty"`             // px, typically 240–480
+	CompletedColumnCollapsed  *bool  `json:"completedColumnCollapsed,omitempty"`
 }
 
 type AutoDevJobStatus string

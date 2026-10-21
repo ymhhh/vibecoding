@@ -165,9 +165,40 @@ func (s *Store) GetUIPrefs() (model.UIPrefs, error) {
 		return prefs, err
 	}
 	if !ok {
-		return prefs, nil
+		return normalizeUIPrefs(prefs), nil
 	}
-	return prefs, nil
+	return normalizeUIPrefs(prefs), nil
+}
+
+func normalizeUIPrefs(prefs model.UIPrefs) model.UIPrefs {
+	if prefs.Language == "" {
+		prefs.Language = "en"
+	}
+	if prefs.ThemeStyle == "" {
+		prefs.ThemeStyle = "light"
+	}
+	switch prefs.IssueShell {
+	case "modal", "drawer", "fullscreen":
+	default:
+		prefs.IssueShell = "modal"
+	}
+	switch prefs.Density {
+	case "comfortable", "compact":
+	default:
+		prefs.Density = "comfortable"
+	}
+	if prefs.ActivityOpen == nil {
+		f := false
+		prefs.ActivityOpen = &f
+	}
+	if prefs.ActivityWidth < 240 || prefs.ActivityWidth > 480 {
+		prefs.ActivityWidth = 320
+	}
+	if prefs.CompletedColumnCollapsed == nil {
+		f := false
+		prefs.CompletedColumnCollapsed = &f
+	}
+	return prefs
 }
 
 func (s *Store) PutUIPrefs(prefs model.UIPrefs) error {

@@ -121,6 +121,11 @@ export interface UIPrefs {
   language: string;
   themeStyle: string;
   activeProjectId: string;
+  issueShell?: string;
+  density?: string;
+  activityOpen?: boolean;
+  activityWidth?: number;
+  completedColumnCollapsed?: boolean;
 }
 
 export interface HealthInfo {

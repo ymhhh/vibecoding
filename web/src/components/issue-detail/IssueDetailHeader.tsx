@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Issue, IssueKind, BranchPrefixConfig } from '../../types';
 import { Language, getTranslation, ThemeStyle } from '../../lib/i18n';
 import { THEME_CONFIGS } from '../../lib/theme';
+import { Density } from '../../lib/storage';
 import { specReadyForDev } from '../../lib/subreq';
 import { branchNameForIssue, normalizeIssueKind } from '../../lib/issueKind';
 import { ThemedSelect } from '../ThemedSelect';
@@ -11,6 +12,7 @@ interface IssueDetailHeaderProps {
   issue: Issue;
   lang: Language;
   themeStyle: ThemeStyle;
+  density?: Density;
   branchPrefixConfig?: BranchPrefixConfig;
   onClose: () => void;
   onMinimize?: () => void;
@@ -25,6 +27,7 @@ export const IssueDetailHeader: React.FC<IssueDetailHeaderProps> = ({
   issue,
   lang,
   themeStyle,
+  density = 'comfortable',
   branchPrefixConfig,
   onClose,
   onMinimize,
@@ -67,7 +70,7 @@ export const IssueDetailHeader: React.FC<IssueDetailHeaderProps> = ({
   };
 
   return (
-    <div className={`p-5 border-b flex items-center justify-between gap-4 ${themeConfig.subtleBorder} ${themeConfig.modalHeaderBg}`}>
+    <div className={`${density === 'compact' ? 'px-4 py-3' : 'p-5'} border-b flex items-center justify-between gap-4 ${themeConfig.subtleBorder} ${themeConfig.modalHeaderBg}`}>
       <div className="flex items-center gap-3 overflow-hidden min-w-0">
         <span
           className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider shrink-0 border ${

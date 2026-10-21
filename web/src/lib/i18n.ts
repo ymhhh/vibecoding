@@ -369,6 +369,13 @@ export const TRANSLATIONS = {
     issueBriefExpand: 'Expand',
     issueBriefCollapse: 'Collapse',
     issueBriefStaleNote: 'Saving updates the original brief only. Regenerate the requirement doc if the change should flow into the spec.',
+    densityComfortable: 'Comfortable',
+    densityCompact: 'Compact',
+    densityHint: 'Board density',
+    collapseCompletedColumn: 'Collapse completed column',
+    expandCompletedColumn: 'Expand completed column',
+    completedColumnCollapsed: 'Collapsed',
+    resizeActivityPanel: 'Drag to resize activity panel',
   },
 
   zh: {
@@ -735,6 +742,13 @@ export const TRANSLATIONS = {
     issueBriefExpand: '展开',
     issueBriefCollapse: '收起',
     issueBriefStaleNote: '保存只更新原始需求。若改动需要进入需求文档，请重新提炼。',
+    densityComfortable: '舒适',
+    densityCompact: '紧凑',
+    densityHint: '看板密度',
+    collapseCompletedColumn: '收起已完成列',
+    expandCompletedColumn: '展开已完成列',
+    completedColumnCollapsed: '已收起',
+    resizeActivityPanel: '拖拽调整活动面板宽度',
   },
 };
 

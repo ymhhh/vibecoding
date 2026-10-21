@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Issue, GitRepo, ModelConfig, BranchPrefixConfig, SubRequirement, DiffComment } from '../../types';
 import { Language, getTranslation, ThemeStyle } from '../../lib/i18n';
 import { THEME_CONFIGS } from '../../lib/theme';
+import { Density } from '../../lib/storage';
 import { api } from '../../lib/api';
 import { hasSubRequirements, specMarkdownForExport, reqMarkdownForExport, visibleSpec, coerceReqMarkdown, coerceDocMarkdown, coerceDevSpec, backlogBlockReason, hasUnverifiedModifies } from '../../lib/subreq';
 import { formatReviewComments } from '../../lib/reviewComments';
@@ -41,6 +42,7 @@ interface IssueDetailModalProps {
   projectId?: string;
   lang?: Language;
   themeStyle?: ThemeStyle;
+  density?: Density;
 }
 
 export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
@@ -62,6 +64,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
   projectId,
   lang = 'en' as Language,
   themeStyle = 'light',
+  density = 'comfortable',
 }) => {
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const t = getTranslation(lang);
@@ -518,6 +521,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
           issue={issue}
           lang={lang}
           themeStyle={themeStyle}
+          density={density}
           branchPrefixConfig={branchPrefixConfig}
           onClose={handleHeaderClose}
           onMinimize={onMinimize}
