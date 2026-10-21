@@ -18,6 +18,8 @@ interface IssueBriefBarProps {
   onUpdateIssue: (updatedIssue: Issue) => void;
   lang: Language;
   themeStyle: ThemeStyle;
+  /** When true, start and stay expanded (used from the compact meta line). */
+  forceOpen?: boolean;
 }
 
 export const IssueBriefBar: React.FC<IssueBriefBarProps> = ({
@@ -26,10 +28,11 @@ export const IssueBriefBar: React.FC<IssueBriefBarProps> = ({
   onUpdateIssue,
   lang,
   themeStyle,
+  forceOpen = false,
 }) => {
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const t = getTranslation(lang);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(forceOpen);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description || '');
@@ -40,13 +43,13 @@ export const IssueBriefBar: React.FC<IssueBriefBarProps> = ({
 
   useEffect(() => {
     setEditing(false);
-    setExpanded(false);
+    setExpanded(forceOpen);
     setTitle(issue.title);
     setDescription(issue.description || '');
     setAttachments(issue.attachments || []);
     setErrors([]);
     setPreviewId(null);
-  }, [issue.id]);
+  }, [issue.id, forceOpen]);
 
   const startEdit = () => {
     setTitle(issue.title);

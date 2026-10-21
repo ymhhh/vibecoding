@@ -19,6 +19,7 @@ import { useIssueChat } from './useIssueChat';
 import { IssueDetailHeader } from './IssueDetailHeader';
 import { AssociatedReposBar } from './AssociatedReposBar';
 import { IssueBriefBar } from './IssueBriefBar';
+import { IssueMetaLine } from './IssueMetaLine';
 import { StatusFocusBanner } from './StatusFocusBanner';
 import { IssueDetailTabs } from './IssueDetailTabs';
 import { IssueChatTab } from './IssueChatTab';
@@ -100,6 +101,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
   const [syncReworkToSpec, setSyncReworkToSpec] = useState(false);
   const [showReworkBox, setShowReworkBox] = useState(false);
   const [editingRepos, setEditingRepos] = useState(false);
+  const [briefExpanded, setBriefExpanded] = useState(false);
   const [selectedScope, setSelectedScope] = useState<string>('all');
   const [reworkScope, setReworkScope] = useState<string>('all');
   const [exporting, setExporting] = useState(false);
@@ -149,6 +151,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
   // Reset per-issue UI when this session first mounts / switches issue, not when hiding.
   useEffect(() => {
     setEditingRepos(false);
+    setBriefExpanded(false);
     setSelectedScope('all');
     setReworkScope('all');
     setExportHint('');
@@ -562,25 +565,45 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
           setActiveTab={setActiveTab}
         />
 
-        <AssociatedReposBar
+        <IssueMetaLine
           issue={issue}
-          gitRepos={gitRepos}
           associatedRepos={associatedRepos}
           canEditRepos={canEditRepos}
           editingRepos={editingRepos}
-          setEditingRepos={setEditingRepos}
-          toggleAssociatedRepo={toggleAssociatedRepo}
+          onToggleReposEdit={() => {
+            if (!canEditRepos && !editingRepos) return;
+            setEditingRepos((v) => !v);
+          }}
+          briefExpanded={briefExpanded}
+          onToggleBrief={() => setBriefExpanded((v) => !v)}
           lang={lang}
           themeStyle={themeStyle}
         />
 
-        <IssueBriefBar
-          issue={issue}
-          canEdit={canEditRepos}
-          onUpdateIssue={onUpdateIssue}
-          lang={lang}
-          themeStyle={themeStyle}
-        />
+        {editingRepos && (
+          <AssociatedReposBar
+            issue={issue}
+            gitRepos={gitRepos}
+            associatedRepos={associatedRepos}
+            canEditRepos={canEditRepos}
+            editingRepos={editingRepos}
+            setEditingRepos={setEditingRepos}
+            toggleAssociatedRepo={toggleAssociatedRepo}
+            lang={lang}
+            themeStyle={themeStyle}
+          />
+        )}
+
+        {briefExpanded && (
+          <IssueBriefBar
+            issue={issue}
+            canEdit={canEditRepos}
+            onUpdateIssue={onUpdateIssue}
+            lang={lang}
+            themeStyle={themeStyle}
+            forceOpen
+          />
+        )}
 
         <StatusFocusBanner
           issue={issue}
