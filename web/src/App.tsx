@@ -1287,6 +1287,8 @@ export default function App() {
             lang={language}
             themeStyle={themeStyle}
             density={density}
+            issueShell={issueShell}
+            onIssueShellChange={setIssueShell}
           />
         );
       })}

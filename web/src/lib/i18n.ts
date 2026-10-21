@@ -376,6 +376,10 @@ export const TRANSLATIONS = {
     expandCompletedColumn: 'Expand completed column',
     completedColumnCollapsed: 'Collapsed',
     resizeActivityPanel: 'Drag to resize activity panel',
+    shellModal: 'Modal',
+    shellDrawer: 'Drawer',
+    shellFullscreen: 'Full screen',
+    shellHint: 'Issue open mode',
   },
 
   zh: {
@@ -749,6 +753,10 @@ export const TRANSLATIONS = {
     expandCompletedColumn: '展开已完成列',
     completedColumnCollapsed: '已收起',
     resizeActivityPanel: '拖拽调整活动面板宽度',
+    shellModal: '弹窗',
+    shellDrawer: '抽屉',
+    shellFullscreen: '全屏',
+    shellHint: 'Issue 打开方式',
   },
 };
 

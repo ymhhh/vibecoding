@@ -2,17 +2,19 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Issue, IssueKind, BranchPrefixConfig } from '../../types';
 import { Language, getTranslation, ThemeStyle } from '../../lib/i18n';
 import { THEME_CONFIGS } from '../../lib/theme';
-import { Density } from '../../lib/storage';
+import { Density, IssueShell } from '../../lib/storage';
 import { specReadyForDev } from '../../lib/subreq';
 import { branchNameForIssue, normalizeIssueKind } from '../../lib/issueKind';
 import { ThemedSelect } from '../ThemedSelect';
-import { X, Play, Trash2, Minus, GitBranch } from 'lucide-react';
+import { X, Play, Trash2, Minus, GitBranch, Square, PanelRight, Maximize2 } from 'lucide-react';
 
 interface IssueDetailHeaderProps {
   issue: Issue;
   lang: Language;
   themeStyle: ThemeStyle;
   density?: Density;
+  issueShell?: IssueShell;
+  onIssueShellChange?: (shell: IssueShell) => void;
   branchPrefixConfig?: BranchPrefixConfig;
   onClose: () => void;
   onMinimize?: () => void;
@@ -28,6 +30,8 @@ export const IssueDetailHeader: React.FC<IssueDetailHeaderProps> = ({
   lang,
   themeStyle,
   density = 'comfortable',
+  issueShell = 'modal',
+  onIssueShellChange,
   branchPrefixConfig,
   onClose,
   onMinimize,
@@ -149,6 +153,41 @@ export const IssueDetailHeader: React.FC<IssueDetailHeaderProps> = ({
             <Play className="w-3.5 h-3.5 fill-current" />
             启动自治开发
           </button>
+        )}
+
+        {onIssueShellChange && (
+          <div
+            className={`flex items-center rounded-xl border p-0.5 ${themeConfig.subtleBorder} ${
+              isLight ? 'bg-slate-100/80' : 'bg-white/5'
+            }`}
+            title={t.shellHint}
+          >
+            {(
+              [
+                { id: 'modal' as const, icon: Square, label: t.shellModal },
+                { id: 'drawer' as const, icon: PanelRight, label: t.shellDrawer },
+                { id: 'fullscreen' as const, icon: Maximize2, label: t.shellFullscreen },
+              ] as const
+            ).map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onIssueShellChange(id);
+                }}
+                aria-label={label}
+                title={label}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  issueShell === id
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : `${themeConfig.textSecondary} hover:${themeConfig.textPrimary}`
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+              </button>
+            ))}
+          </div>
         )}
 
         {onMinimize && (

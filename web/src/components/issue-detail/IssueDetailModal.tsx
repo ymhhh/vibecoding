@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Issue, GitRepo, ModelConfig, BranchPrefixConfig, SubRequirement, DiffComment } from '../../types';
 import { Language, getTranslation, ThemeStyle } from '../../lib/i18n';
 import { THEME_CONFIGS } from '../../lib/theme';
-import { Density } from '../../lib/storage';
+import { Density, IssueShell } from '../../lib/storage';
 import { api } from '../../lib/api';
 import { hasSubRequirements, specMarkdownForExport, reqMarkdownForExport, visibleSpec, coerceReqMarkdown, coerceDocMarkdown, coerceDevSpec, backlogBlockReason, hasUnverifiedModifies } from '../../lib/subreq';
 import { formatReviewComments } from '../../lib/reviewComments';
@@ -43,6 +43,8 @@ interface IssueDetailModalProps {
   lang?: Language;
   themeStyle?: ThemeStyle;
   density?: Density;
+  issueShell?: IssueShell;
+  onIssueShellChange?: (shell: IssueShell) => void;
 }
 
 export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
@@ -65,6 +67,8 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
   lang = 'en' as Language,
   themeStyle = 'light',
   density = 'comfortable',
+  issueShell = 'modal',
+  onIssueShellChange,
 }) => {
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const t = getTranslation(lang);
@@ -506,15 +510,29 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
     }
   };
 
+  const shell = issueShell === 'drawer' || issueShell === 'fullscreen' ? issueShell : 'modal';
+  const overlayClass =
+    shell === 'modal'
+      ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 sm:p-6'
+      : shell === 'drawer'
+        ? 'fixed inset-0 z-50 flex justify-end bg-black/30'
+        : 'fixed inset-0 z-50 flex';
+  const panelClass =
+    shell === 'modal'
+      ? `w-full max-w-5xl border rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[90vh] ${themeConfig.modalBg}`
+      : shell === 'drawer'
+        ? `w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl h-full border-l shadow-2xl overflow-hidden flex flex-col ${themeConfig.modalBg}`
+        : `w-full h-full overflow-hidden flex flex-col ${themeConfig.modalBg}`;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 sm:p-6"
+      className={overlayClass}
       onClick={(e) => {
         if (e.target === e.currentTarget) onMinimize();
       }}
     >
       <div
-        className={`w-full max-w-5xl border rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[90vh] ${themeConfig.modalBg}`}
+        className={panelClass}
         onClick={(e) => e.stopPropagation()}
       >
         <IssueDetailHeader
@@ -522,6 +540,8 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
           lang={lang}
           themeStyle={themeStyle}
           density={density}
+          issueShell={shell}
+          onIssueShellChange={onIssueShellChange}
           branchPrefixConfig={branchPrefixConfig}
           onClose={handleHeaderClose}
           onMinimize={onMinimize}
