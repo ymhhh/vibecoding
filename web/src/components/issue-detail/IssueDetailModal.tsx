@@ -703,27 +703,64 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
             />
           </div>
 
-          <div className={`flex-1 overflow-hidden flex flex-col min-h-0 ${preset === 'review' ? '' : 'hidden'}`}>
-            <IssueReviewTab
-              issue={issue}
-              splitIssue={splitIssue}
-              lang={lang}
-              themeStyle={themeStyle}
-              showReworkBox={showReworkBox}
-              setShowReworkBox={setShowReworkBox}
-              reworkFeedback={reworkFeedback}
-              setReworkFeedback={setReworkFeedback}
-              syncReworkToSpec={syncReworkToSpec}
-              setSyncReworkToSpec={setSyncReworkToSpec}
-              reworkScope={reworkScope}
-              setReworkScope={setReworkScope}
-              handleReworkSubmit={handleReworkSubmit}
-              handleReworkByComments={handleReworkByComments}
-              handleApproveMerge={handleApproveMerge}
-              handlePublishRemote={handlePublishRemote}
-              publishingRemote={publishingRemote}
-              onCommentsChange={handleCommentsChange}
-            />
+          <div
+            className={`flex-1 overflow-hidden min-h-0 ${
+              preset === 'review' ? 'flex flex-col lg:flex-row' : 'hidden'
+            }`}
+          >
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col border-b lg:border-b-0 lg:border-r border-inherit">
+              <IssueSpecTab
+                issue={issue}
+                splitIssue={splitIssue}
+                activeSub={activeSub}
+                currentSpec={currentSpec}
+                selectedScope={selectedScope}
+                setSelectedScope={setSelectedScope}
+                lang={lang}
+                themeStyle={themeStyle}
+                editingSpec={editingSpec}
+                setEditingSpec={setEditingSpec}
+                specMarkdown={specMarkdown}
+                setSpecMarkdown={setSpecMarkdown}
+                reqMarkdown={reqMarkdown}
+                setReqMarkdown={setReqMarkdown}
+                exporting={exporting}
+                exportHint={exportHint}
+                chatError={chatError}
+                isSending={isSending}
+                setActiveTab={setActiveTab}
+                handleSendMessage={handleSendMessage}
+                handleExportDevSpec={handleExportDevSpec}
+                handleExportReqDoc={handleExportReqDoc}
+                handleScheduleToBacklog={handleScheduleToBacklog}
+                onUpdateIssue={onUpdateIssue}
+                pendingLlm={pendingLlm}
+                onRetrySession={handleRetrySession}
+                onRegenerate={handleRegenerate}
+              />
+            </div>
+            <div className="flex-[1.4] min-w-0 min-h-0 overflow-hidden flex flex-col">
+              <IssueReviewTab
+                issue={issue}
+                splitIssue={splitIssue}
+                lang={lang}
+                themeStyle={themeStyle}
+                showReworkBox={showReworkBox}
+                setShowReworkBox={setShowReworkBox}
+                reworkFeedback={reworkFeedback}
+                setReworkFeedback={setReworkFeedback}
+                syncReworkToSpec={syncReworkToSpec}
+                setSyncReworkToSpec={setSyncReworkToSpec}
+                reworkScope={reworkScope}
+                setReworkScope={setReworkScope}
+                handleReworkSubmit={handleReworkSubmit}
+                handleReworkByComments={handleReworkByComments}
+                handleApproveMerge={handleApproveMerge}
+                handlePublishRemote={handlePublishRemote}
+                publishingRemote={publishingRemote}
+                onCommentsChange={handleCommentsChange}
+              />
+            </div>
           </div>
         </div>
       </div>
