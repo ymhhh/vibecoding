@@ -131,6 +131,7 @@ export interface UIPrefs {
   language: string;
   themeStyle: string;
   activeProjectId: string;
+  activeIssueId?: string;
   issueShell?: string;
   density?: string;
   activityOpen?: boolean;
@@ -143,6 +144,17 @@ export interface HealthInfo {
   timestamp: string;
   llmConfigured: boolean;
   authRequired?: boolean;
+  version?: string;
+}
+
+export interface HistoryEvent {
+  id: string;
+  issueId: string;
+  eventType: string;
+  model?: string;
+  appVersion?: string;
+  payload?: Record<string, unknown>;
+  createdAt: string;
 }
 
 export interface AutoDevJob {
@@ -343,6 +355,15 @@ export const api = {
     request<Issue>(`/api/issues/${issueId}/accept-design`, {
       method: 'POST',
       body: '{}',
+    }),
+
+  listIssueHistory: (issueId: string) =>
+    request<{ events: HistoryEvent[]; appVersion?: string }>(`/api/issues/${issueId}/history`),
+
+  sessionFocus: (issueId: string) =>
+    request<{ ok: boolean; activeProjectId: string; activeIssueId: string }>('/api/session/focus', {
+      method: 'POST',
+      body: JSON.stringify({ issueId }),
     }),
 
   listIssueRevisions: (issueId: string) =>

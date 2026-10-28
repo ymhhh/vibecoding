@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -18,6 +20,13 @@ type Store struct {
 }
 
 func Open(path string) (*Store, error) {
+	backupPath := ""
+	if st, err := osStat(path); err == nil && st != nil && !st.IsDir() && st.Size() > 0 {
+		backupPath = path + ".pre-migrate"
+		if err := copyFile(path, backupPath); err != nil {
+			return nil, fmt.Errorf("backup database before migrate: %w", err)
+		}
+	}
 	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", path)
 	sqldb, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -25,11 +34,50 @@ func Open(path string) (*Store, error) {
 	}
 	sqldb.SetMaxOpenConns(1)
 	s := &Store{db: sqldb}
-	if err := s.migrate(); err != nil {
+	if err := migrateFn(s); err != nil {
 		_ = sqldb.Close()
+		if backupPath != "" {
+			_ = copyFile(backupPath, path)
+		}
 		return nil, err
 	}
+	if backupPath != "" {
+		_ = osRemove(backupPath)
+	}
+	_ = s.PutSetting("schema_version", currentSchemaVersion)
 	return s, nil
+}
+
+// migrateFn is the schema migrator; tests may override to simulate failure.
+var migrateFn = func(s *Store) error { return s.migrate() }
+
+const currentSchemaVersion = 5
+
+// thin os wrappers keep tests free to mock if needed later.
+var (
+	osStat   = osStatImpl
+	osRemove = osRemoveImpl
+	copyFile = copyFileImpl
+)
+
+func osStatImpl(path string) (os.FileInfo, error) { return os.Stat(path) }
+func osRemoveImpl(path string) error              { return os.Remove(path) }
+
+func copyFileImpl(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Close()
 }
 
 func (s *Store) Close() error {

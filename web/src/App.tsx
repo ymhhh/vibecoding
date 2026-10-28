@@ -217,9 +217,29 @@ export default function App() {
           counts[iss.projectId] = (counts[iss.projectId] || 0) + 1;
         }
         setIssueCounts(counts);
-        setIssues(active ? allIssues.filter((iss) => iss.projectId === active) : []);
+        const projectIssues = active ? allIssues.filter((iss) => iss.projectId === active) : [];
+        setIssues(projectIssues);
         skipActiveRefreshRef.current = true;
         setLoadError('');
+        // Restore last focused issue after upgrade / restart (M5 #38).
+        const lastIssueId = prefs.activeIssueId || '';
+        if (lastIssueId) {
+          const last =
+            projectIssues.find((i) => i.id === lastIssueId) ||
+            allIssues.find((i) => i.id === lastIssueId);
+          if (last) {
+            if (last.projectId !== active) {
+              setActiveProjectId(last.projectId);
+              setIssues(allIssues.filter((iss) => iss.projectId === last.projectId));
+            }
+            // Defer open until state settles; openIssue defined later in render cycle.
+            setTimeout(() => {
+              setSessionIssues((prev) => ({ ...prev, [last.id]: last }));
+              setSelectedIssueId(last.id);
+              setMountedIssueIds((ids) => (ids.includes(last.id) ? ids : [...ids, last.id]));
+            }, 0);
+          }
+        }
       } catch (err: any) {
         if (!cancelled) setLoadError(err.message || getTranslation(loadLanguage()).loadBackendFailed);
       } finally {
@@ -276,6 +296,7 @@ export default function App() {
         language,
         themeStyle,
         activeProjectId,
+        activeIssueId: selectedIssueId || undefined,
         issueShell,
         density,
         activityOpen: isActivityOpen,
@@ -288,6 +309,7 @@ export default function App() {
     language,
     themeStyle,
     activeProjectId,
+    selectedIssueId,
     issueShell,
     density,
     isActivityOpen,
@@ -665,6 +687,7 @@ export default function App() {
       setSelectedIssueId(issue.id);
       setMinimizedIssueIds((ids) => ids.filter((id) => id !== issue.id));
       setMountedIssueIds((ids) => (ids.includes(issue.id) ? ids : [...ids, issue.id]));
+      void api.sessionFocus(issue.id).catch(() => undefined);
     },
     [selectedIssueId, busyIssueIds, minimizedIssueIds]
   );
