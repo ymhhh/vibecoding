@@ -201,6 +201,11 @@ export const IssueChatTab: React.FC<IssueChatTabProps> = ({
                           : 'System'}
                     </span>
                     <span className="opacity-70">{msg.timestamp}</span>
+                    {msg.sender === 'ai' && msg.model ? (
+                      <span className="opacity-60 font-mono truncate max-w-[10rem]" title={msg.model}>
+                        {msg.model}
+                      </span>
+                    ) : null}
                   </div>
                   {msg.sender === 'ai' ? (
                     <MarkdownView text={body} />

@@ -75,6 +75,8 @@ export interface ChatMessage {
   sender: 'user' | 'ai' | 'system';
   text: string;
   timestamp: string;
+  /** Built-in model that produced an AI turn (M5). */
+  model?: string;
 }
 
 export interface SpecFileChange {

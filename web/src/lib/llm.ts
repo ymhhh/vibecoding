@@ -58,7 +58,9 @@ export interface ChatRequestParams {
   onStatus?: (msg: string) => void;
 }
 
-export async function sendLLMChat(params: ChatRequestParams): Promise<string> {
+export async function sendLLMChat(
+  params: ChatRequestParams
+): Promise<{ text: string; model?: string }> {
   const res = await fetch('/api/chat?stream=1', {
     method: 'POST',
     headers: {
@@ -90,6 +92,7 @@ export async function sendLLMChat(params: ChatRequestParams): Promise<string> {
   }
 
   let text = '';
+  let model = '';
   let streamError: string | null = null;
 
   await readSSE(res, (ev) => {
@@ -102,12 +105,15 @@ export async function sendLLMChat(params: ChatRequestParams): Promise<string> {
       streamError = ev.error || 'stream error';
     } else if (ev.type === 'done' && typeof ev.text === 'string') {
       text = ev.text;
+      if (typeof (ev as { model?: string }).model === 'string') {
+        model = (ev as { model?: string }).model || '';
+      }
     }
   });
 
   if (streamError) throw new Error(streamError);
   if (!text) throw new Error('Empty model response');
-  return text;
+  return { text, model: model || undefined };
 }
 
 export async function testOpenAPIConnection(config: {

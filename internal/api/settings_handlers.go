@@ -31,11 +31,32 @@ func (s *Server) handlePutModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	prev, _ := s.Store.GetModelConfig()
+	prevModel := strings.TrimSpace(prev.OpenAIModel)
 	if err := s.Store.PutModelConfig(cfg); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
 	saved, _ := s.Store.GetModelConfig()
+	newModel := strings.TrimSpace(saved.OpenAIModel)
+	if prevModel != newModel {
+		// Built-in client has no remote session; chat/docs stay on the issue (#36).
+		s.recordGlobalHistory(model.HistoryModelChange, newModel, map[string]any{
+			"previousModel": prevModel,
+			"model":         newModel,
+			"note":          "conversation continues from stored chat; no remote session to resume",
+		})
+		prefs, _ := s.Store.GetUIPrefs()
+		if id := strings.TrimSpace(prefs.ActiveIssueID); id != "" {
+			if iss, _ := s.Store.GetIssue(id); iss != nil {
+				s.recordIssueHistory(iss, model.HistoryModelChange, newModel, map[string]any{
+					"previousModel": prevModel,
+					"model":         newModel,
+					"note":          "conversation continues from stored chat; no remote session to resume",
+				})
+			}
+		}
+	}
 	writeJSON(w, 200, saved.Public())
 }
 

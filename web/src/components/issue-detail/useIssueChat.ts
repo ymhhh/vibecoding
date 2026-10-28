@@ -323,6 +323,7 @@ export function useIssueChat(params: {
               sender: 'ai',
               text: reply,
               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              model: modelConfig?.openAIModel || undefined,
             };
             const nextSubs = subRequirements || tempIssue.subRequirements;
             const saved: Issue = {
@@ -346,7 +347,7 @@ export function useIssueChat(params: {
             return;
           }
 
-          const responseText = await sendLLMChat({
+          const chatRes = await sendLLMChat({
             prompt: promptToUse,
             messages: updatedMessages,
             modelConfig,
@@ -381,6 +382,7 @@ export function useIssueChat(params: {
               if (!streamed) patchProcess(label, 'running');
             },
           });
+          const responseText = chatRes.text;
 
           patchProcess(streamed || responseText, 'done');
           const aiMsg: ChatMessage = {
@@ -388,6 +390,7 @@ export function useIssueChat(params: {
             sender: 'ai',
             text: responseText,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            model: chatRes.model || modelConfig?.openAIModel || undefined,
           };
           setPendingLlm(null);
           onUpdateIssue({
