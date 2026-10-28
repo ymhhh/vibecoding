@@ -6,6 +6,8 @@ import { branchNameForIssue, normalizeIssueKind } from '../lib/issueKind';
 import { GitBranch, FileText, CheckCircle2, Play, Sparkles, Tag, GitPullRequest, ShieldCheck, ArrowRight, Layers, Paperclip, Loader2 } from 'lucide-react';
 import { hasSubRequirements, readySubCount } from '../lib/subreq';
 
+const DND_ISSUE_TYPE = 'application/x-vibecoding-issue';
+
 interface IssueCardProps {
   issue: Issue;
   onClick: () => void;
@@ -16,6 +18,9 @@ interface IssueCardProps {
   branchPrefixConfig?: BranchPrefixConfig;
   lang?: Language;
   themeStyle?: ThemeStyle;
+  draggable?: boolean;
+  onDragStartCard?: (issueId: string) => void;
+  onDragEndCard?: () => void;
 }
 
 export const IssueCard: React.FC<IssueCardProps> = ({
@@ -28,6 +33,9 @@ export const IssueCard: React.FC<IssueCardProps> = ({
   branchPrefixConfig,
   lang = 'en',
   themeStyle = 'light',
+  draggable = false,
+  onDragStartCard,
+  onDragEndCard,
 }) => {
   const t = getTranslation(lang);
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
@@ -87,7 +95,18 @@ export const IssueCard: React.FC<IssueCardProps> = ({
   return (
     <div
       onClick={onClick}
-      className={`p-4 rounded-xl border backdrop-blur-md transition-all shadow-sm hover:shadow-md group cursor-pointer flex flex-col justify-between gap-3 relative overflow-hidden min-w-0 ${
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        e.dataTransfer.setData(DND_ISSUE_TYPE, issue.id);
+        e.dataTransfer.setData('text/plain', issue.id);
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStartCard?.(issue.id);
+      }}
+      onDragEnd={() => onDragEndCard?.()}
+      className={`p-4 rounded-xl border backdrop-blur-md transition-all shadow-sm hover:shadow-md group flex flex-col justify-between gap-3 relative overflow-hidden min-w-0 ${
+        draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+      } ${
         isCompleted
           ? isLight
             ? 'border-emerald-300 bg-emerald-50/90 hover:bg-emerald-100/60 hover:border-emerald-400'

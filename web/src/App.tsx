@@ -23,7 +23,17 @@ import { Language, ThemeStyle, getTranslation } from './lib/i18n';
 import { THEME_CONFIGS } from './lib/theme';
 import { api, subscribeJobEvents, getAPIToken, setAPIToken } from './lib/api';
 import { hasSubRequirements, specReadyForDev, hasUnverifiedModifies, backlogBlockReason } from './lib/subreq';
+import {
+  applyBoardFilters,
+  BoardFilters,
+  BoardViewMode,
+  EMPTY_BOARD_FILTERS,
+  pendingLocalReviewIssues,
+} from './lib/boardFilters';
 import { KanbanBoard } from './components/KanbanBoard';
+import { BoardFilterBar } from './components/BoardFilterBar';
+import { IssueListView } from './components/IssueListView';
+import { ReviewQueue } from './components/ReviewQueue';
 import { IssueDetailModal, ISSUE_SESSION_DOCK_ID } from './components/IssueDetailModal';
 import { ProjectModal } from './components/ProjectModal';
 import { CreateIssueModal } from './components/CreateIssueModal';
@@ -111,6 +121,9 @@ export default function App() {
   const [issueShell, setIssueShell] = useState<IssueShell>(loadIssueShell);
   const [density, setDensity] = useState<Density>(loadDensity);
   const [completedColumnCollapsed, setCompletedColumnCollapsed] = useState(loadCompletedColumnCollapsed);
+  const [boardFilters, setBoardFilters] = useState<BoardFilters>(EMPTY_BOARD_FILTERS);
+  const [boardViewMode, setBoardViewMode] = useState<BoardViewMode>('board');
+  const [reviewQueueOpen, setReviewQueueOpen] = useState(false);
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const [layoutReady, setLayoutReady] = useState(false);
 
@@ -352,6 +365,13 @@ export default function App() {
 
   const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0];
   const activeIssues = issues.filter((i) => i.projectId === activeProject?.id);
+  const filteredIssues = applyBoardFilters(activeIssues, boardFilters);
+  const reviewQueueIssues = pendingLocalReviewIssues(activeIssues);
+
+  useEffect(() => {
+    setBoardFilters(EMPTY_BOARD_FILTERS);
+    setReviewQueueOpen(false);
+  }, [activeProjectId]);
 
   useEffect(() => {
     if (!isProjectDropdownOpen && !isThemeMenuOpen) return;
@@ -1221,21 +1241,58 @@ export default function App() {
         <div className="flex-1 flex min-h-0 overflow-hidden">
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {activeProject ? (
-              <KanbanBoard
-                issues={activeIssues}
-                gitRepos={activeProject.gitRepos || []}
-                branchPrefixConfig={activeProject.branchPrefixConfig}
-                onSelectIssue={openIssue}
-                onStartAutoDev={handleStartAutoDev}
-                onMoveColumn={handleMoveColumn}
-                onOpenCreateIssue={() => setIsCreateIssueModalOpen(true)}
-                analyzingIssueIds={analyzingIssueIds}
-                lang={language}
-                themeStyle={themeStyle}
-                density={density}
-                completedColumnCollapsed={completedColumnCollapsed}
-                onCompletedColumnCollapsedChange={setCompletedColumnCollapsed}
-              />
+              <>
+                <BoardFilterBar
+                  filters={boardFilters}
+                  onChange={setBoardFilters}
+                  viewMode={boardViewMode}
+                  onViewModeChange={setBoardViewMode}
+                  gitRepos={activeProject.gitRepos || []}
+                  reviewQueueCount={reviewQueueIssues.length}
+                  reviewQueueOpen={reviewQueueOpen}
+                  onToggleReviewQueue={() => setReviewQueueOpen((v) => !v)}
+                  filteredCount={filteredIssues.length}
+                  totalCount={activeIssues.length}
+                  lang={language}
+                  themeStyle={themeStyle}
+                />
+                {reviewQueueOpen && (
+                  <ReviewQueue
+                    issues={reviewQueueIssues}
+                    onSelectIssue={openIssue}
+                    onClose={() => setReviewQueueOpen(false)}
+                    lang={language}
+                    themeStyle={themeStyle}
+                  />
+                )}
+                {boardViewMode === 'list' ? (
+                  <IssueListView
+                    issues={filteredIssues}
+                    gitRepos={activeProject.gitRepos || []}
+                    branchPrefixConfig={activeProject.branchPrefixConfig}
+                    onSelectIssue={openIssue}
+                    lang={language}
+                    themeStyle={themeStyle}
+                  />
+                ) : (
+                  <KanbanBoard
+                    issues={filteredIssues}
+                    gitRepos={activeProject.gitRepos || []}
+                    branchPrefixConfig={activeProject.branchPrefixConfig}
+                    onSelectIssue={openIssue}
+                    onStartAutoDev={handleStartAutoDev}
+                    onMoveColumn={handleMoveColumn}
+                    onIllegalMove={(reason) => showToast('error', reason)}
+                    onOpenCreateIssue={() => setIsCreateIssueModalOpen(true)}
+                    analyzingIssueIds={analyzingIssueIds}
+                    lang={language}
+                    themeStyle={themeStyle}
+                    density={density}
+                    completedColumnCollapsed={completedColumnCollapsed}
+                    onCompletedColumnCollapsedChange={setCompletedColumnCollapsed}
+                  />
+                )}
+              </>
             ) : (
               <div className={`flex-1 flex flex-col items-center justify-center gap-3 ${themeConfig.textSecondary}`}>
                 <p className="text-sm">{t.createProjectToStart}</p>
