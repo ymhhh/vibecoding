@@ -116,6 +116,9 @@ func (s *Server) handleAcceptRequirement(w http.ResponseWriter, r *http.Request)
 		writeErr(w, 500, err.Error())
 		return
 	}
+	s.recordIssueHistory(issue, model.HistoryAcceptRequirement, "", map[string]any{
+		"requirementRevisionId": issue.CurrentRequirementRevisionID,
+	})
 	saved, _ := s.Store.GetIssue(issue.ID)
 	writeJSON(w, 200, saved)
 }
@@ -163,6 +166,10 @@ func (s *Server) handleAcceptDesign(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
+	s.recordIssueHistory(issue, model.HistoryAcceptDesign, "", map[string]any{
+		"developmentRevisionId":     rev.ID,
+		"requirementRevisionId":     reqRevID,
+	})
 	saved, _ := s.Store.GetIssue(issue.ID)
 	writeJSON(w, 200, saved)
 }

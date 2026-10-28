@@ -14,6 +14,7 @@ import (
 	"github.com/ymhhh/vibecoding/internal/db"
 	"github.com/ymhhh/vibecoding/internal/llm"
 	"github.com/ymhhh/vibecoding/internal/model"
+	"github.com/ymhhh/vibecoding/internal/version"
 )
 
 type Server struct {
@@ -29,6 +30,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", s.handleHealth)
+	mux.HandleFunc("POST /api/session/focus", s.handleSessionFocus)
 
 	mux.HandleFunc("GET /api/settings/model", s.handleGetModel)
 	mux.HandleFunc("PUT /api/settings/model", s.handlePutModel)
@@ -70,6 +72,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/issues/{id}/accept-requirement", s.handleAcceptRequirement)
 	mux.HandleFunc("POST /api/issues/{id}/accept-design", s.handleAcceptDesign)
 	mux.HandleFunc("GET /api/issues/{id}/revisions", s.handleListIssueRevisions)
+	mux.HandleFunc("GET /api/issues/{id}/history", s.handleListIssueHistory)
 	mux.HandleFunc("GET /api/issues/{id}/requirement-revisions/{revId}", s.handleGetRequirementRevision)
 	mux.HandleFunc("GET /api/issues/{id}/development-revisions/{revId}", s.handleGetDevelopmentRevision)
 	mux.HandleFunc("GET /api/issues/{id}/export-spec", s.handleExportSpec)
@@ -294,5 +297,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"timestamp":     time.Now().UTC().Format(time.RFC3339),
 		"llmConfigured": configured,
 		"authRequired":  strings.TrimSpace(s.Token) != "",
+		"version":       version.Version,
 	})
 }

@@ -55,8 +55,19 @@ func (s *Server) handleAutoDevStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	execName := executor.DisplayName(execCfg)
-	if issue.AgentSessionID != "" && issue.PRInfo != nil && strings.TrimSpace(issue.PRInfo.Executor) != "" && issue.PRInfo.Executor != execName {
+	// Never reuse a prior CLI session when the executor identity changed (#37).
+	prevExec := ""
+	if issue.PRInfo != nil {
+		prevExec = strings.TrimSpace(issue.PRInfo.Executor)
+	}
+	if issue.AgentSessionID != "" && prevExec != "" && prevExec != execName {
 		issue.AgentSessionID = ""
+	}
+	if issue.AgentSessionID != "" && body.Executor != nil {
+		// Explicit override that differs from the last run clears the session.
+		if prevExec != "" && prevExec != execName {
+			issue.AgentSessionID = ""
+		}
 	}
 
 	issue.Status = model.StatusInProgress
@@ -94,6 +105,11 @@ func (s *Server) handleAutoDevStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Runner.Start(job.ID)
+	s.recordIssueHistory(issue, model.HistoryCodingStart, "", map[string]any{
+		"jobId":          job.ID,
+		"executor":       execName,
+		"resumedSession": issue.AgentSessionID != "",
+	})
 	writeJSON(w, 202, job)
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/ymhhh/vibecoding/internal/gitx"
 	"github.com/ymhhh/vibecoding/internal/llm"
 	"github.com/ymhhh/vibecoding/internal/model"
+	"github.com/ymhhh/vibecoding/internal/version"
 )
 
 type Runner struct {
@@ -278,6 +279,20 @@ func (r *Runner) run(ctx context.Context, jobID string) error {
 	}
 	_ = r.recordDevelopmentRevisionCommits(issue, sessions)
 	_ = r.Store.UpsertIssue(*issue)
+	_, _ = r.Store.AppendHistoryEvent(model.HistoryEvent{
+		IssueID:    issue.ID,
+		EventType:  model.HistoryCodingFinish,
+		AppVersion: version.Version,
+		Payload: map[string]any{
+			"jobId":                  jobID,
+			"status":                 string(issue.Status),
+			"docPhase":               string(issue.DocPhase),
+			"executor":               execName,
+			"requirementRevisionId":  issue.CurrentRequirementRevisionID,
+			"developmentRevisionId":  issue.CurrentDevelopmentRevisionID,
+			"branch":                 branchName,
+		},
+	})
 
 	logger.L().WithFields(logger.Fields{
 		"job_id":   jobID,

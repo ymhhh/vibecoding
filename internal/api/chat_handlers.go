@@ -159,7 +159,11 @@ Prefer structured sections: Summary, Architecture, Target Files, Implementation 
 			_ = sse.event(map[string]any{"type": "error", "error": err.Error()})
 			return
 		}
-		_ = sse.event(map[string]any{"type": "done", "text": text, "sourceFilesRead": sourceFiles})
+		s.noteChatHistory(body.IssueID, cfg.OpenAIModel)
+		_ = sse.event(map[string]any{
+			"type": "done", "text": text, "sourceFilesRead": sourceFiles,
+			"model": strings.TrimSpace(cfg.OpenAIModel),
+		})
 		return
 	}
 
@@ -184,7 +188,25 @@ Prefer structured sections: Summary, Architecture, Target Files, Implementation 
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"text": text, "sourceFilesRead": sourceFiles})
+	s.noteChatHistory(body.IssueID, cfg.OpenAIModel)
+	writeJSON(w, 200, map[string]any{
+		"text": text, "sourceFilesRead": sourceFiles,
+		"model": strings.TrimSpace(cfg.OpenAIModel),
+	})
+}
+
+func (s *Server) noteChatHistory(issueID, modelName string) {
+	issueID = strings.TrimSpace(issueID)
+	if issueID == "" {
+		return
+	}
+	iss, _ := s.Store.GetIssue(issueID)
+	if iss == nil {
+		return
+	}
+	s.recordIssueHistory(iss, model.HistoryChat, modelName, map[string]any{
+		"model": modelName,
+	})
 }
 
 func (s *Server) handleTestOpenAPI(w http.ResponseWriter, r *http.Request) {

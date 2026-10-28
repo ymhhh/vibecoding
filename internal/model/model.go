@@ -237,7 +237,32 @@ type ChatMessage struct {
 	Sender    string `json:"sender"` // user | ai | system
 	Text      string `json:"text"`
 	Timestamp string `json:"timestamp"`
+	// Model is the built-in model id that produced an AI turn (M5); empty for user/system.
+	Model string `json:"model,omitempty"`
 }
+
+// HistoryEvent is an append-only per-issue (or global) progress marker (M5).
+type HistoryEvent struct {
+	ID         string         `json:"id"`
+	IssueID    string         `json:"issueId"`
+	EventType  string         `json:"eventType"`
+	Model      string         `json:"model,omitempty"`
+	AppVersion string         `json:"appVersion,omitempty"`
+	Payload    map[string]any `json:"payload,omitempty"`
+	CreatedAt  string         `json:"createdAt"`
+}
+
+// History event_type values.
+const (
+	HistoryChat              = "chat"
+	HistoryAcceptRequirement = "accept_requirement"
+	HistoryAcceptDesign      = "accept_design"
+	HistoryCodingStart       = "coding_start"
+	HistoryCodingFinish      = "coding_finish"
+	HistoryModelChange       = "model_change"
+	HistoryExecutorChange    = "executor_change"
+	HistorySessionFocus      = "session_focus"
+)
 
 type SpecFileChange struct {
 	FilePath     string `json:"filePath"`
@@ -1097,14 +1122,15 @@ func (iss *Issue) ReadySubCount() (ready, total int) {
 }
 
 type UIPrefs struct {
-	Language                  string `json:"language"`
-	ThemeStyle                string `json:"themeStyle"`
-	ActiveProjectID           string `json:"activeProjectId"`
-	IssueShell                string `json:"issueShell,omitempty"`                // modal | drawer | fullscreen
-	Density                   string `json:"density,omitempty"`                   // comfortable | compact
-	ActivityOpen              *bool  `json:"activityOpen,omitempty"`
-	ActivityWidth             int    `json:"activityWidth,omitempty"`             // px, typically 240–480
-	CompletedColumnCollapsed  *bool  `json:"completedColumnCollapsed,omitempty"`
+	Language                 string `json:"language"`
+	ThemeStyle               string `json:"themeStyle"`
+	ActiveProjectID          string `json:"activeProjectId"`
+	ActiveIssueID            string `json:"activeIssueId,omitempty"` // last opened issue (M5 restore)
+	IssueShell               string `json:"issueShell,omitempty"`    // modal | drawer | fullscreen
+	Density                  string `json:"density,omitempty"`       // comfortable | compact
+	ActivityOpen             *bool  `json:"activityOpen,omitempty"`
+	ActivityWidth            int    `json:"activityWidth,omitempty"` // px, typically 240–480
+	CompletedColumnCollapsed *bool  `json:"completedColumnCollapsed,omitempty"`
 }
 
 type AutoDevJobStatus string
