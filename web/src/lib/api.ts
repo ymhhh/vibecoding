@@ -1,4 +1,14 @@
-import type { Project, Issue, ModelConfig, DevSpec, PRInfo, AutoDevLog } from '../types';
+import type {
+  Project,
+  Issue,
+  ModelConfig,
+  DevSpec,
+  PRInfo,
+  AutoDevLog,
+  IssueRevisionsPayload,
+  RequirementRevision,
+  DevelopmentRevision,
+} from '../types';
 import { readSSE } from './stream';
 
 const TOKEN_STORAGE_KEY = 'vibecoding_api_token';
@@ -334,6 +344,19 @@ export const api = {
       method: 'POST',
       body: '{}',
     }),
+
+  listIssueRevisions: (issueId: string) =>
+    request<IssueRevisionsPayload>(`/api/issues/${issueId}/revisions`),
+
+  getRequirementRevision: (issueId: string, revId: string) =>
+    request<{ revision: RequirementRevision; developmentRevisions: DevelopmentRevision[] }>(
+      `/api/issues/${issueId}/requirement-revisions/${encodeURIComponent(revId)}`
+    ),
+
+  getDevelopmentRevision: (issueId: string, revId: string) =>
+    request<{ revision: DevelopmentRevision; requirementRevision?: RequirementRevision | null }>(
+      `/api/issues/${issueId}/development-revisions/${encodeURIComponent(revId)}`
+    ),
 
   /** Convert issue brief (title/description/attachments) into a Markdown ReqDoc without LLM. */
   reqDocFromBrief: (issueId: string) =>

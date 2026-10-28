@@ -9,6 +9,7 @@ import { LLMRecoveryBar } from './LLMRecoveryBar';
 import { SendMessageOpts } from './useIssueChat';
 import { requirementAccepted, hasReqDoc, briefToReqMarkdown, coerceReqMarkdown, coerceDocMarkdown, legacySpecOnly, specReadyForDev, backlogBlockReason, designAccepted, designStale, hasDevSpecMarkdown } from '../../lib/subreq';
 import { api } from '../../lib/api';
+import { SpecRevisionBrowser } from './SpecRevisionBrowser';
 
 interface IssueSpecTabProps {
   issue: Issue;
@@ -194,6 +195,19 @@ export const IssueSpecTab: React.FC<IssueSpecTabProps> = ({
         onRetrySession={() => onRetrySession?.()}
         onRegenerate={() => onRegenerate?.()}
       />
+
+      {(!!issue.reqDoc?.rawMarkdown ||
+        !!issue.currentRequirementRevisionId ||
+        !!issue.currentDevelopmentRevisionId) && (
+        <div className="mb-3">
+          <SpecRevisionBrowser
+            issue={issue}
+            lang={lang}
+            themeStyle={themeStyle}
+            refreshKey={`${issue.currentRequirementRevisionId || ''}:${issue.currentDevelopmentRevisionId || ''}:${issue.updatedAt}`}
+          />
+        </div>
+      )}
 
       {docPane === 'req' ? (
         !issue.reqDoc?.rawMarkdown ? (

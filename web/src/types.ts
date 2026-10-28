@@ -289,6 +289,12 @@ export interface Issue {
   subRequirements?: SubRequirement[];
   currentSubId?: string;
   reworkSubId?: string;
+  /** Latest accepted requirement revision id (M4). */
+  currentRequirementRevisionId?: string;
+  /** Latest accepted development revision id (M4). */
+  currentDevelopmentRevisionId?: string;
+  /** Requirement revision the current design cites (M4). */
+  designRequirementRevisionId?: string;
   autoDevLogs: AutoDevLog[];
   autoDevProgress: number; // 0 - 100
   prInfo?: PRInfo;
@@ -298,6 +304,39 @@ export interface Issue {
   pendingLlm?: PendingLLMSession;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RequirementRevision {
+  id: string;
+  issueId: string;
+  rawMarkdown: string;
+  source?: string;
+  sourceUrl?: string;
+  createdAt: string;
+}
+
+export interface DevelopmentRevisionCommit {
+  id: string;
+  revisionId: string;
+  repoId: string;
+  sha: string;
+  createdAt: string;
+}
+
+export interface DevelopmentRevision {
+  id: string;
+  issueId: string;
+  requirementRevisionId: string;
+  rawMarkdown: string;
+  createdAt: string;
+  commits?: DevelopmentRevisionCommit[];
+}
+
+export interface IssueRevisionsPayload {
+  requirementRevisions: RequirementRevision[];
+  developmentRevisions: DevelopmentRevision[];
+  currentRequirementRevisionId?: string;
+  currentDevelopmentRevisionId?: string;
 }
 
 export interface PendingLLMSession {
