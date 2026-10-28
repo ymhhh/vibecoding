@@ -194,6 +194,24 @@ func UpgradeLegacyOpenAIBaseURL(raw string) string {
 	return u + "/chat/completions"
 }
 
+// ReviewMode selects whether an issue's review stays local or also tracks a remote PR/MR.
+type ReviewMode string
+
+const (
+	ReviewModeLocal          ReviewMode = "local"
+	ReviewModeLocalAndRemote ReviewMode = "local_and_remote"
+)
+
+// NormalizeReviewMode returns a valid mode; empty/unknown → local.
+func NormalizeReviewMode(m ReviewMode) ReviewMode {
+	switch ReviewMode(strings.TrimSpace(string(m))) {
+	case ReviewModeLocalAndRemote:
+		return ReviewModeLocalAndRemote
+	default:
+		return ReviewModeLocal
+	}
+}
+
 type Project struct {
 	ID                   string              `json:"id"`
 	Name                 string              `json:"name"`
@@ -202,6 +220,8 @@ type Project struct {
 	BranchPrefixConfig   *BranchPrefixConfig `json:"branchPrefixConfig,omitempty"`
 	CustomModelConfig    *ModelConfig        `json:"customModelConfig,omitempty"`
 	UseCustomModelConfig bool                `json:"useCustomModelConfig"`
+	// ReviewMode is local-only by default; local_and_remote also tracks a remote PR/MR (M9).
+	ReviewMode ReviewMode `json:"reviewMode,omitempty"`
 	// ReqDocPromptTemplate overrides the system prompt for requirement extract/revise.
 	// Empty means use the built-in default.
 	ReqDocPromptTemplate string `json:"reqDocPromptTemplate,omitempty"`
@@ -437,10 +457,12 @@ type Issue struct {
 	Status            IssueStatus        `json:"status"`
 	AssociatedRepoIDs []string           `json:"associatedRepoIds"`
 	Assignee          string             `json:"assignee"`
-	ChatMessages      []ChatMessage      `json:"chatMessages"`
-	ReqDoc            *ReqDoc            `json:"reqDoc,omitempty"`
-	DocPhase          DocPhase           `json:"docPhase,omitempty"`
-	DevSpec           *DevSpec           `json:"devSpec,omitempty"`
+	// SourceURL is the external issue link when imported (M3); empty for manually created issues.
+	SourceURL    string             `json:"sourceUrl,omitempty"`
+	ChatMessages []ChatMessage      `json:"chatMessages"`
+	ReqDoc       *ReqDoc            `json:"reqDoc,omitempty"`
+	DocPhase     DocPhase           `json:"docPhase,omitempty"`
+	DevSpec      *DevSpec           `json:"devSpec,omitempty"`
 	SubRequirements   []SubRequirement   `json:"subRequirements,omitempty"`
 	CurrentSubID      string             `json:"currentSubId,omitempty"`
 	ReworkSubID       string             `json:"reworkSubId,omitempty"`
@@ -453,6 +475,16 @@ type Issue struct {
 	PendingLLM        *PendingLLMSession `json:"pendingLlm,omitempty"`
 	CreatedAt         string             `json:"createdAt"`
 	UpdatedAt         string             `json:"updatedAt"`
+}
+
+// NormalizePriority returns a valid priority; empty/unknown → medium.
+func NormalizePriority(p Priority) Priority {
+	switch Priority(strings.TrimSpace(string(p))) {
+	case PriorityLow, PriorityHigh, PriorityUrgent:
+		return Priority(strings.TrimSpace(string(p)))
+	default:
+		return PriorityMedium
+	}
 }
 
 // DiffComment statuses for the review → repair → merge gate.

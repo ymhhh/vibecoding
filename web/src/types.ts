@@ -40,6 +40,9 @@ export interface BranchPrefixConfig {
   releasePrefix: string;  // 版本发布分支前缀 (如 release/)
 }
 
+/** local = local-only review; local_and_remote also tracks a GitHub/GitLab PR (M9). */
+export type ReviewMode = 'local' | 'local_and_remote';
+
 export interface Project {
   id: string;
   name: string;
@@ -48,6 +51,8 @@ export interface Project {
   branchPrefixConfig?: BranchPrefixConfig; // 工程级别 Git 分支前缀规范配置
   customModelConfig?: ModelConfig;
   useCustomModelConfig: boolean;
+  /** Default local. Remote PR tracking lands in milestone 9. */
+  reviewMode?: ReviewMode;
   /** Overrides requirement extract/revise system prompt; empty = built-in default. */
   reqDocPromptTemplate?: string;
   /** Overrides design-spec (pass 2) system prompt; empty = built-in default. */
@@ -275,6 +280,8 @@ export interface Issue {
   status: IssueStatus;
   associatedRepoIds: string[];
   assignee: string;
+  /** External issue URL when imported (M3); empty for manually created issues. */
+  sourceUrl?: string;
   chatMessages: ChatMessage[];
   reqDoc?: ReqDoc;
   docPhase?: DocPhase;
