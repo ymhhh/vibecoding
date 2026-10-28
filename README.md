@@ -2,19 +2,18 @@
 
 **English** | [简体中文](./README.zh-CN.md)
 
-Local-first AI Auto-Dev board: manage projects and issues on a Kanban, generate Specs with an LLM, then let Auto-Dev create a branch, patch code, run tests, and commit for review.
+Local-first AI Auto-Dev board: manage projects and issues on a Kanban, generate Specs with an LLM, then let Auto-Dev create a branch, patch code, run tests, and commit for **local** review and merge.
 
-Default data directory: `~/.vibecoding/` (SQLite + settings + worktrees).
+Default data directory: `~/.vibecoding/` (SQLite + settings + worktrees). Same database file is migrated in place as features land — no separate remote store.
 
-## Screenshots
+### What’s in place
 
-Sample project **演示商城** with one issue in each Kanban stage (requirements → backlog → in progress → review → completed):
+- **Workspace** — open issues as modal / drawer / fullscreen; saved presets and UI prefs (density, activity panel, completed column).
+- **Queryable local data** — issue kind, priority, status, source URL, and related fields live in SQLite columns (plus residual JSON for unknown keys).
+- **Requirement intake** — create issues manually, or import from a GitHub / Gitee / Linear issue link into the requirements column (optional read-only host tokens for private links). Import does not skip Spec acceptance.
+- **Traceability** — accepting a requirement or design appends immutable revisions; Auto-Dev commit SHAs attach to the current development revision; the Spec panel can browse past revisions read-only.
 
-![Kanban with all stages](./docs/images/kanban-stages.png)
-
-Opening a requirements-stage issue to chat and extract Specs:
-
-![Requirements-stage issue](./docs/images/issue-requirements-stage.png)
+Review stays **local** (diff, inline comments, approve & merge). Remote PR/MR review is out of scope.
 
 ---
 
@@ -137,13 +136,13 @@ curl -s http://127.0.0.1:8090/api/health
 
 ## How to use the product
 
-1. Open **LLM settings** — save the full chat-completions URL and API key (stored only in local SQLite).
+1. Open **LLM settings** — save the full chat-completions URL and API key (stored only in local SQLite). Optionally save **issue-import tokens** (GitHub / Gitee / Linear, read-only) for private link import.
 2. Optionally pick a **coding executor**: built-in LLM (VibeBot) by default, or Claude Code / Cursor / Codex / custom CLI if installed and logged in on this machine.
 3. Create a **Project**, add a local git repository path, click **Validate path**. Optionally customize requirement / design **doc prompt templates** in project settings (see below).
-4. Create an **Issue**, chat with the AI, extract the **requirement document**, then the **Dev Spec**. Large issues can be split into sub-requirements (each with its own Spec).
-5. **Accept Spec → Backlog**, then **Start Auto-Dev**. Work runs in isolated git worktrees under `{data-dir}/worktrees/{issueID}/{repoID}/` so your main checkout stays untouched. One commit per sub-requirement when split.
-6. Watch live logs. On success the issue moves to **In Review** with a real file tree, unified diff, and quality-gate results. Failed tests may auto-heal a few rounds; still failing → back to Backlog, worktree kept for inspection.
-7. **Approve & Merge** merges the feature branch into the repo default branch locally (refuses if that branch is checked out and dirty, if an Auto-Dev job is still running, or if any inline review comment is still `open` / `fixing`). Rework keeps comments on the same branch (optional **Sync to Dev Spec**); repair failure stays in review. Optional **Publish to remote** pushes and may run `gh pr create` when `gh` is installed.
+4. Create an **Issue** (manual form) or **Import from link** (GitHub / Gitee / Linear). Chat with the AI, extract the **requirement document**, then the **Dev Spec**. Large issues can be split into sub-requirements (each with its own Spec). Accepting requirement / design records **revisions** you can browse later in the Spec panel.
+5. **Accept Spec → Backlog**, then **Start Auto-Dev**. Work runs in isolated git worktrees under `{data-dir}/worktrees/{issueID}/{repoID}/` so your main checkout stays untouched. One commit per sub-requirement when split; SHAs are stored on the current development revision.
+6. Watch live logs. On success the issue moves to **In Review** with a real file tree, unified diff (with Spec beside the diff), and quality-gate results. Failed tests may auto-heal a few rounds; still failing → back to Backlog, worktree kept for inspection.
+7. **Approve & Merge** merges the feature branch into the repo default branch **locally** (refuses if that branch is checked out and dirty, if an Auto-Dev job is still running, or if any inline review comment is still `open` / `fixing`). Rework keeps comments on the same coding session / branch (optional **Sync to Dev Spec**). Optional **Publish to remote** still pushes / may run `gh pr create` when `gh` is installed; that is outbound publish, not a remote review product mode.
 
 Design notes: [docs/autodev-isolation-executor-review.md](./docs/autodev-isolation-executor-review.md). Follow-ups: [docs/review-loop-executor-override.md](./docs/review-loop-executor-override.md).
 

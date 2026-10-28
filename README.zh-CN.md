@@ -2,19 +2,18 @@
 
 [English](./README.md) | **简体中文**
 
-本地优先的 AI 自动开发看板：在看板上管理项目与需求，用大模型生成规格，再由 Auto-Dev 自动建分支、改代码、跑测试、提交，最后人工评审合并。
+本地优先的 AI 自动开发看板：在看板上管理项目与需求，用大模型生成规格，再由 Auto-Dev 自动建分支、改代码、跑测试、提交，最后做**本地**评审与合并。
 
-默认数据目录：`~/.vibecoding/`（SQLite、配置、worktree）。
+默认数据目录：`~/.vibecoding/`（SQLite、配置、worktree）。功能升级会在同一库文件上原地迁移，不另起远程库。
 
-## 界面预览
+### 已具备的能力
 
-示例项目「演示商城」：看板上五个阶段各有一条需求（需求分析 → 待办 → 开发中 → 评审中 → 已完成）。
+- **工作区** — Issue 以模态 / 抽屉 / 全屏打开；可保存预设与界面偏好（密度、活动面板、已完成列等）。
+- **可查询本地数据** — kind、priority、status、source URL 等落在 SQLite 列上（残留 JSON 保留未知字段）。
+- **需求入口** — 可手动新建，也可从 GitHub / Gitee / Linear 的 Issue 链接导入到需求列表（私有链接可配只读 host token）。导入不会跳过规格确认。
+- **可追溯** — 验收需求 / 设计会追加不可变修订；Auto-Dev 的提交 SHA 记在当前开发修订上；Spec 面板可只读浏览历史修订。
 
-![看板五阶段示例](./docs/images/kanban-stages.png)
-
-打开「需求分析」中的需求，可对话并提炼需求文档 / 开发设计：
-
-![需求分析阶段示例](./docs/images/issue-requirements-stage.png)
+评审默认且仅支持**本地**（diff、行内评论、批准合并）。远程 PR/MR 评审不在范围内。
 
 ---
 
@@ -137,13 +136,13 @@ curl -s http://127.0.0.1:8090/api/health
 
 ## 产品怎么用
 
-1. 打开 **LLM 设置**，填完整的 chat-completions 地址和 API Key（只存在本地 SQLite）。
+1. 打开 **LLM 设置**，填完整的 chat-completions 地址和 API Key（只存在本地 SQLite）。可选配置 **Issue 导入令牌**（GitHub / Gitee / Linear 只读），用于私有链接导入。
 2. 可选：在同一设置里选 **编码执行器**——默认内置 LLM（VibeBot）；也可换本机已装好并登录的 Claude Code / Cursor / Codex / 自定义 CLI。
 3. 创建 **项目**，添加本地 git 仓库路径，点 **Validate path** 校验。可选：在项目设置的 **文档提示词模板** 里自定义需求文档 / 开发设计的系统提示词（见下节）。
-4. 创建 **需求（Issue）**，和 AI 对话，提炼 **需求文档**，再写 **开发设计（Dev Spec）**。大需求可拆成子需求，各自一份 Spec。
-5. **确认规格 → Backlog → 启动自治开发**。编码在隔离 worktree：`{data-dir}/worktrees/{issueID}/{repoID}/`，不动你主仓库当前工作区。有子需求时按序实施，每个子需求一次提交。
-6. 看实时日志。成功后进 **In Review**，有真实文件树、unified diff、质量门禁。测试失败会自愈若干轮；仍失败则回 Backlog，并保留 worktree 方便对照。
-7. **Approve & Merge** 在本地把特性分支合进默认分支（默认分支被 checkout 且 dirty、Auto-Dev 仍在跑、或还有 `open` / `fixing` 行内评审评论时会拒绝）。返工在同一分支修代码（可选「同步进 Dev Spec」）；修复失败仍停在评审。可选 **发布到远端**：push，本机有 `gh` 时再试着开 PR。
+4. **手动新建**需求，或 **从链接导入**（GitHub / Gitee / Linear）。与 AI 对话，提炼 **需求文档**，再写 **开发设计（Dev Spec）**。大需求可拆成子需求，各自一份 Spec。验收需求 / 设计会写入**修订历史**，可在 Spec 面板只读回看。
+5. **确认规格 → Backlog → 启动自治开发**。编码在隔离 worktree：`{data-dir}/worktrees/{issueID}/{repoID}/`，不动你主仓库当前工作区。有子需求时按序实施，每个子需求一次提交；提交 SHA 记在当前开发修订上。
+6. 看实时日志。成功后进 **In Review**，有真实文件树、unified diff（可与 Spec 对照）、质量门禁。测试失败会自愈若干轮；仍失败则回 Backlog，并保留 worktree 方便对照。
+7. **Approve & Merge** 在**本地**把特性分支合进默认分支（默认分支被 checkout 且 dirty、Auto-Dev 仍在跑、或还有 `open` / `fixing` 行内评审评论时会拒绝）。返工保持同一编码会话 / 分支（可选「同步进 Dev Spec」）。可选 **发布到远端**：push，本机有 `gh` 时再试着开 PR——这是出站发布，不是远程评审产品模式。
 
 设计说明：[docs/autodev-isolation-executor-review.md](./docs/autodev-isolation-executor-review.md)。后续规划：[docs/review-loop-executor-override.md](./docs/review-loop-executor-override.md)。
 
