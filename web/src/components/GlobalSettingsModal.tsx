@@ -114,6 +114,13 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
   const [probes, setProbes] = useState<ExecutorProbe[]>([]);
   const [execMsg, setExecMsg] = useState('');
   const [maximized, setMaximized] = useState(false);
+  const [githubToken, setGithubToken] = useState('');
+  const [giteeToken, setGiteeToken] = useState('');
+  const [linearToken, setLinearToken] = useState('');
+  const [githubHint, setGithubHint] = useState('');
+  const [giteeHint, setGiteeHint] = useState('');
+  const [linearHint, setLinearHint] = useState('');
+  const [importTokenMsg, setImportTokenMsg] = useState('');
 
   const controlClass = `w-full px-3.5 py-2.5 border rounded-xl focus:outline-none transition-colors text-xs vc-control ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`;
 
@@ -137,10 +144,19 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
     setAvailableModels([]);
     setModelsMsg('');
 
+    setGithubToken('');
+    setGiteeToken('');
+    setLinearToken('');
+    setImportTokenMsg('');
+
     let cancelled = false;
     (async () => {
       try {
-        const [cfg, listed] = await Promise.all([api.getExecutor(), api.listExecutors()]);
+        const [cfg, listed, tokens] = await Promise.all([
+          api.getExecutor(),
+          api.listExecutors(),
+          api.getImportTokens(),
+        ]);
         if (cancelled) return;
         setExecType((cfg.type as 'llm' | 'agent') || 'llm');
         setExecPreset(cfg.preset || 'claude');
@@ -149,6 +165,9 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
         setCustomArgs((cfg.args || ['{prompt}']).join(' '));
         setPromptStdin(!!cfg.promptStdin);
         setProbes(listed.executors || []);
+        setGithubHint(tokens.githubConfigured ? tokens.githubHint || '****' : '');
+        setGiteeHint(tokens.giteeConfigured ? tokens.giteeHint || '****' : '');
+        setLinearHint(tokens.linearConfigured ? tokens.linearHint || '****' : '');
       } catch (e) {
         if (!cancelled) setExecMsg(String(e));
       }
@@ -226,7 +245,13 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
     };
     try {
       await api.putExecutor(execBody);
+      await api.putImportTokens({
+        github: githubToken.trim(),
+        gitee: giteeToken.trim(),
+        linear: linearToken.trim(),
+      });
       setExecMsg(t.executorSaved);
+      setImportTokenMsg(t.importTokensSaved);
       onClose();
     } catch (e) {
       setExecMsg(String(e));
@@ -533,6 +558,51 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({
               </div>
             )}
             {execMsg && <div className="text-xs text-violet-700 dark:text-violet-300">{execMsg}</div>}
+          </div>
+
+          {/* Issue import tokens */}
+          <div className="space-y-4 p-5 rounded-xl border border-cyan-500/30 bg-cyan-500/10">
+            <div className="flex items-center gap-2 text-cyan-800 dark:text-cyan-300 font-medium pb-2 border-b border-cyan-500/20">
+              <Key className="w-4 h-4 text-cyan-500" />
+              <span>{t.importTokensTitle}</span>
+            </div>
+            <p className={`text-xs ${themeConfig.textSecondary}`}>{t.importTokensHint}</p>
+            <label className="block text-xs space-y-1">
+              <span className={themeConfig.textPrimary}>{t.importTokenGitHub}</span>
+              <input
+                type="password"
+                value={githubToken}
+                onChange={(e) => setGithubToken(e.target.value)}
+                placeholder={githubHint ? `configured ${githubHint}` : 'ghp_…'}
+                className={`${controlClass} font-mono`}
+                autoComplete="off"
+              />
+            </label>
+            <label className="block text-xs space-y-1">
+              <span className={themeConfig.textPrimary}>{t.importTokenGitee}</span>
+              <input
+                type="password"
+                value={giteeToken}
+                onChange={(e) => setGiteeToken(e.target.value)}
+                placeholder={giteeHint ? `configured ${giteeHint}` : ''}
+                className={`${controlClass} font-mono`}
+                autoComplete="off"
+              />
+            </label>
+            <label className="block text-xs space-y-1">
+              <span className={themeConfig.textPrimary}>{t.importTokenLinear}</span>
+              <input
+                type="password"
+                value={linearToken}
+                onChange={(e) => setLinearToken(e.target.value)}
+                placeholder={linearHint ? `configured ${linearHint}` : 'lin_api_…'}
+                className={`${controlClass} font-mono`}
+                autoComplete="off"
+              />
+            </label>
+            {importTokenMsg && (
+              <div className="text-xs text-cyan-700 dark:text-cyan-300">{importTokenMsg}</div>
+            )}
           </div>
         </div>
 

@@ -1103,3 +1103,42 @@ func (m ModelConfig) Public() ModelConfig {
 	out.KeyHint = hint
 	return out
 }
+
+// IssueImportTokens stores read-only host tokens for private issue-link import (M3).
+// Empty update fields mean "leave the current token".
+type IssueImportTokens struct {
+	GitHub string `json:"github,omitempty"`
+	Gitee  string `json:"gitee,omitempty"`
+	Linear string `json:"linear,omitempty"`
+	// Response-only masks:
+	GitHubConfigured bool   `json:"githubConfigured,omitempty"`
+	GitHubHint       string `json:"githubHint,omitempty"`
+	GiteeConfigured  bool   `json:"giteeConfigured,omitempty"`
+	GiteeHint        string `json:"giteeHint,omitempty"`
+	LinearConfigured bool   `json:"linearConfigured,omitempty"`
+	LinearHint       string `json:"linearHint,omitempty"`
+}
+
+// Public strips raw tokens for API responses.
+func (t IssueImportTokens) Public() IssueImportTokens {
+	out := IssueImportTokens{}
+	out.GitHubConfigured, out.GitHubHint = MaskKey(t.GitHub)
+	out.GiteeConfigured, out.GiteeHint = MaskKey(t.Gitee)
+	out.LinearConfigured, out.LinearHint = MaskKey(t.Linear)
+	return out
+}
+
+// MergeImportTokens applies a partial update; blank fields keep existing secrets.
+func MergeImportTokens(existing, patch IssueImportTokens) IssueImportTokens {
+	out := existing
+	if strings.TrimSpace(patch.GitHub) != "" {
+		out.GitHub = strings.TrimSpace(patch.GitHub)
+	}
+	if strings.TrimSpace(patch.Gitee) != "" {
+		out.Gitee = strings.TrimSpace(patch.Gitee)
+	}
+	if strings.TrimSpace(patch.Linear) != "" {
+		out.Linear = strings.TrimSpace(patch.Linear)
+	}
+	return out
+}
