@@ -35,11 +35,36 @@ func (s *Server) handlePutExecutor(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	prev, _ := s.Store.GetExecutorConfig()
+	prevName := executor.DisplayName(prev)
 	if err := s.Store.PutExecutorConfig(cfg); err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
 	saved, _ := s.Store.GetExecutorConfig()
+	newName := executor.DisplayName(saved)
+	if prevName != newName {
+		// Keep issue history/branch/worktree; drop CLI session ids so the next job
+		// does not resume the previous executor's session (#37).
+		_ = s.Store.ClearAllAgentSessionIDs()
+		s.recordGlobalHistory(model.HistoryExecutorChange, "", map[string]any{
+			"previousExecutor": prevName,
+			"executor":         newName,
+			"clearedSessions":  true,
+		})
+		prefs, _ := s.Store.GetUIPrefs()
+		if id := strings.TrimSpace(prefs.ActiveIssueID); id != "" {
+			if iss, _ := s.Store.GetIssue(id); iss != nil {
+				iss.AgentSessionID = ""
+				_ = s.Store.UpsertIssue(*iss)
+				s.recordIssueHistory(iss, model.HistoryExecutorChange, "", map[string]any{
+					"previousExecutor": prevName,
+					"executor":         newName,
+					"clearedSessions":  true,
+				})
+			}
+		}
+	}
 	writeJSON(w, 200, saved)
 }
 
