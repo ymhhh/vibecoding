@@ -440,6 +440,22 @@ export default function App() {
     }
   };
 
+  const handleImportedIssue = (issue: Issue, created: boolean) => {
+    setIssues((prev) => {
+      const others = prev.filter((i) => i.id !== issue.id);
+      return issue.projectId === activeProjectId ? [issue, ...others] : others;
+    });
+    if (created) {
+      setIssueCounts((prev) => ({
+        ...prev,
+        [issue.projectId]: (prev[issue.projectId] || 0) + 1,
+      }));
+      showToast('success', language === 'zh' ? '已导入到需求列表' : 'Imported into requirements');
+    } else {
+      showToast('info', language === 'zh' ? '该链接已导入过，已打开已有 Issue' : 'Already imported — opened existing issue');
+    }
+  };
+
   const handleUpdateIssue = useCallback(
     async (updatedIssue: Issue) => {
       // Optimistic local update with functional setState
@@ -1315,6 +1331,7 @@ export default function App() {
           gitRepos={activeProject.gitRepos}
           branchPrefixConfig={activeProject.branchPrefixConfig}
           onCreate={handleCreateIssue}
+          onImported={handleImportedIssue}
           lang={language}
           themeStyle={themeStyle}
         />

@@ -249,6 +249,36 @@ export const api = {
     request<Issue[]>(projectId ? `/api/issues?projectId=${encodeURIComponent(projectId)}` : '/api/issues'),
   createIssue: (issue: Partial<Issue>) =>
     request<Issue>('/api/issues', { method: 'POST', body: JSON.stringify(issue) }),
+  importIssue: (body: {
+    projectId: string;
+    url: string;
+    associatedRepoIds?: string[];
+    priority?: string;
+    kind?: string;
+    assignee?: string;
+  }) =>
+    request<{ issue: Issue; created: boolean }>('/api/issues/import', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  getImportTokens: () =>
+    request<{
+      githubConfigured?: boolean;
+      githubHint?: string;
+      giteeConfigured?: boolean;
+      giteeHint?: string;
+      linearConfigured?: boolean;
+      linearHint?: string;
+    }>('/api/settings/import-tokens'),
+  putImportTokens: (body: { github?: string; gitee?: string; linear?: string }) =>
+    request<{
+      githubConfigured?: boolean;
+      githubHint?: string;
+      giteeConfigured?: boolean;
+      giteeHint?: string;
+      linearConfigured?: boolean;
+      linearHint?: string;
+    }>('/api/settings/import-tokens', { method: 'PUT', body: JSON.stringify(body) }),
   updateIssue: (id: string, issue: Partial<Issue>) =>
     request<Issue>(`/api/issues/${id}`, { method: 'PUT', body: JSON.stringify(issue) }),
   deleteIssue: (id: string) =>

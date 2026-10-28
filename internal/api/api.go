@@ -38,6 +38,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/executors", s.handleListExecutors)
 	mux.HandleFunc("GET /api/ui-prefs", s.handleGetUIPrefs)
 	mux.HandleFunc("PUT /api/ui-prefs", s.handlePutUIPrefs)
+	mux.HandleFunc("GET /api/settings/import-tokens", s.handleGetImportTokens)
+	mux.HandleFunc("PUT /api/settings/import-tokens", s.handlePutImportTokens)
 
 	mux.HandleFunc("GET /api/projects", s.handleListProjects)
 	mux.HandleFunc("POST /api/projects", s.handleCreateProject)
@@ -47,6 +49,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/issues", s.handleListIssues)
 	mux.HandleFunc("POST /api/issues", s.handleCreateIssue)
+	mux.HandleFunc("POST /api/issues/import", s.handleImportIssue)
 	mux.HandleFunc("GET /api/issues/{id}", s.handleGetIssue)
 	mux.HandleFunc("PUT /api/issues/{id}", s.handleUpdateIssue)
 	mux.HandleFunc("DELETE /api/issues/{id}", s.handleDeleteIssue)

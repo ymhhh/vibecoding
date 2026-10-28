@@ -12,6 +12,7 @@ import { pickAttachmentFiles } from '../lib/pickfiles';
 import { branchNameForIssue, normalizeIssueKind } from '../lib/issueKind';
 import { ThemedSelect } from './ThemedSelect';
 import { AttachmentPreview } from './AttachmentPreview';
+import { api } from '../lib/api';
 import {
   X,
   PlusCircle,
@@ -28,6 +29,8 @@ import {
   Minimize2,
   Upload,
   Eye,
+  Link2,
+  Loader2,
 } from 'lucide-react';
 
 interface CreateIssueModalProps {
@@ -37,6 +40,7 @@ interface CreateIssueModalProps {
   gitRepos: GitRepo[];
   branchPrefixConfig?: BranchPrefixConfig;
   onCreate: (issue: Partial<Issue>) => void;
+  onImported?: (issue: Issue, created: boolean) => void;
   lang?: Language;
   themeStyle?: ThemeStyle;
 }
@@ -48,6 +52,7 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
   gitRepos,
   branchPrefixConfig,
   onCreate,
+  onImported,
   lang = 'en',
   themeStyle = 'light',
 }) => {
@@ -55,6 +60,10 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
   const themeConfig = THEME_CONFIGS[themeStyle] || THEME_CONFIGS.light;
   const isLight = themeConfig.isLight;
 
+  const [mode, setMode] = useState<'manual' | 'import'>('manual');
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
@@ -79,8 +88,49 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
   const descRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (!isOpen) setMaximized(false);
+    if (!isOpen) {
+      setMaximized(false);
+      setMode('manual');
+      setImportUrl('');
+      setImportError('');
+      setImporting(false);
+    }
   }, [isOpen]);
+
+  const handleImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!importUrl.trim()) {
+      alert(t.createIssueImportNeedUrl);
+      return;
+    }
+    if (selectedRepoIds.length === 0) {
+      alert(t.createIssueNeedRepo);
+      return;
+    }
+    setImporting(true);
+    setImportError('');
+    try {
+      const res = await api.importIssue({
+        projectId,
+        url: importUrl.trim(),
+        associatedRepoIds: selectedRepoIds,
+        priority,
+        kind: normalizeIssueKind(kind),
+        assignee,
+      });
+      onImported?.(res.issue, res.created);
+      setCreatedCount((prev) => prev + 1);
+      if (keepOpenAfterCreate) {
+        setImportUrl('');
+      } else {
+        onClose();
+      }
+    } catch (err: unknown) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const addFiles = useCallback(
     async (fileList: File[] | FileList) => {
@@ -279,10 +329,64 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+        <div className={`px-7 pt-4 flex gap-2 border-b ${themeConfig.subtleBorder}`}>
+          <button
+            type="button"
+            onClick={() => setMode('manual')}
+            className={`px-3 py-2 text-sm font-semibold rounded-t-xl border-b-2 transition-colors ${
+              mode === 'manual'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-300'
+                : `border-transparent ${themeConfig.textSecondary}`
+            }`}
+          >
+            {t.createIssueModeManual}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('import')}
+            className={`px-3 py-2 text-sm font-semibold rounded-t-xl border-b-2 transition-colors inline-flex items-center gap-1.5 ${
+              mode === 'import'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-300'
+                : `border-transparent ${themeConfig.textSecondary}`
+            }`}
+          >
+            <Link2 className="w-3.5 h-3.5" />
+            {t.createIssueModeImport}
+          </button>
+        </div>
+
+        <form
+          onSubmit={mode === 'import' ? handleImport : handleSubmit}
+          className="flex-1 min-h-0 flex flex-col"
+        >
           <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 px-7 py-6">
               <div className="lg:col-span-3 space-y-5">
+                {mode === 'import' ? (
+                  <div className="space-y-3">
+                    <p className={`text-sm ${themeConfig.textSecondary}`}>{t.createIssueImportHint}</p>
+                    <div>
+                      <label className={`block text-sm font-semibold mb-2 ${themeConfig.textPrimary}`}>
+                        {t.createIssueImportUrl} <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="url"
+                        required
+                        autoFocus
+                        value={importUrl}
+                        onChange={(e) => setImportUrl(e.target.value)}
+                        placeholder={t.createIssueImportUrlPlaceholder}
+                        className={`w-full px-4 py-3 text-base border rounded-2xl focus:outline-none transition-colors ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
+                      />
+                    </div>
+                    {importError && (
+                      <div className="flex items-start gap-2 text-sm text-rose-600 dark:text-rose-300">
+                        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                        <span>{importError}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
                 <div>
                   <label className={`block text-sm font-semibold mb-2 ${themeConfig.textPrimary}`}>
                     Issue {lang === 'zh' ? '标题' : 'title'} <span className="text-rose-500">*</span>
@@ -297,7 +401,9 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
                     className={`w-full px-4 py-3 text-base border rounded-2xl focus:outline-none transition-colors ${themeConfig.inputBg} ${themeConfig.inputText} ${themeConfig.inputBorder}`}
                   />
                 </div>
+                )}
 
+                {mode === 'manual' && (
                 <div>
                   <div className="flex items-end justify-between gap-3 mb-2">
                     <label className={`block text-sm font-semibold ${themeConfig.textPrimary}`}>
@@ -328,7 +434,9 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
                     )}
                   </div>
                 </div>
+                )}
 
+                {mode === 'manual' && (
                 <div>
                   <label className={`block text-sm font-semibold mb-2 flex items-center justify-between ${themeConfig.textPrimary}`}>
                     <span className="flex items-center gap-1.5">
@@ -416,6 +524,7 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
                     </ul>
                   )}
                 </div>
+                )}
               </div>
 
               <div className="lg:col-span-2 space-y-5">
@@ -601,10 +710,15 @@ export const CreateIssueModal: React.FC<CreateIssueModalProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-md transition-all flex items-center gap-2"
+                disabled={importing}
+                className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-md transition-all flex items-center gap-2 disabled:opacity-60"
               >
-                <Sparkles className="w-4 h-4" />
-                {t.createIssueSubmit} ({t.createIssueSubmitPool})
+                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : mode === 'import' ? <Link2 className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                {mode === 'import'
+                  ? importing
+                    ? t.createIssueImporting
+                    : t.createIssueImportSubmit
+                  : `${t.createIssueSubmit} (${t.createIssueSubmitPool})`}
               </button>
             </div>
           </div>
