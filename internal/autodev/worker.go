@@ -276,6 +276,7 @@ func (r *Runner) run(ctx context.Context, jobID string) error {
 	if issue.HasSubRequirements() && issue.DevSpec != nil {
 		issue.DevSpec.FileChanges = issue.AggregatedFileChanges()
 	}
+	_ = r.recordDevelopmentRevisionCommits(issue, sessions)
 	_ = r.Store.UpsertIssue(*issue)
 
 	logger.L().WithFields(logger.Fields{
@@ -293,6 +294,32 @@ func (r *Runner) run(ctx context.Context, jobID string) error {
 		PRInfo:   pr,
 	})
 	return nil
+}
+
+// recordDevelopmentRevisionCommits attaches each worktree HEAD SHA to the current
+// development revision (forking a new revision when the previous run already recorded commits).
+func (r *Runner) recordDevelopmentRevisionCommits(issue *model.Issue, sessions []worktreeSession) error {
+	if r == nil || r.Store == nil || issue == nil || len(sessions) == 0 {
+		return nil
+	}
+	if strings.TrimSpace(issue.CurrentDevelopmentRevisionID) == "" {
+		return nil
+	}
+	var commits []model.DevelopmentRevisionCommit
+	for _, sess := range sessions {
+		sha, err := gitx.RefSHA(sess.WTPath, "HEAD")
+		if err != nil || strings.TrimSpace(sha) == "" {
+			sha, _ = gitx.HeadSHA(sess.WTPath)
+		}
+		if strings.TrimSpace(sha) == "" {
+			continue
+		}
+		commits = append(commits, model.DevelopmentRevisionCommit{
+			RepoID: sess.Repo.ID,
+			SHA:    sha,
+		})
+	}
+	return r.Store.AttachDevelopmentCommits(issue, commits)
 }
 
 func (r *Runner) appendLog(job *model.AutoDevJob, phase, message, details string) error {
