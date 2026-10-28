@@ -2,7 +2,7 @@ import React from 'react';
 import { Issue, GitRepo } from '../../types';
 import { Language, ThemeStyle, getTranslation } from '../../lib/i18n';
 import { THEME_CONFIGS } from '../../lib/theme';
-import { FileText, GitBranch, Pencil } from 'lucide-react';
+import { ExternalLink, FileText, GitBranch, Pencil } from 'lucide-react';
 
 interface IssueMetaLineProps {
   issue: Issue;
@@ -70,6 +70,21 @@ export const IssueMetaLine: React.FC<IssueMetaLineProps> = ({
       >
         {statusLabel(issue.status, lang)}
       </span>
+
+      {!!issue.sourceUrl && (
+        <a
+          href={issue.sourceUrl}
+          target="_blank"
+          rel="noreferrer"
+          title={issue.sourceUrl}
+          className={`inline-flex items-center gap-1 max-w-[28%] truncate rounded-md px-1.5 py-0.5 border transition-colors ${themeConfig.inputBorder} ${themeConfig.textSecondary} hover:text-indigo-600 dark:hover:text-indigo-300`}
+        >
+          <ExternalLink className="w-3 h-3 shrink-0" />
+          <span className="truncate">
+            {t.sourceUrlLabel}: {issue.sourceUrl.replace(/^https?:\/\//, '')}
+          </span>
+        </a>
+      )}
 
       <button
         type="button"

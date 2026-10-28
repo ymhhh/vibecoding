@@ -657,6 +657,28 @@ type IssueIndexRow struct {
 	UpdatedAt string
 }
 
+// FindIssueBySourceURL returns the project issue that already imported this URL, if any.
+// rawURL is compared as stored and in a trimmed lowercase form.
+func (s *Store) FindIssueBySourceURL(projectID, sourceURL string) (*model.Issue, error) {
+	sourceURL = strings.TrimSpace(sourceURL)
+	if projectID == "" || sourceURL == "" {
+		return nil, nil
+	}
+	var id string
+	err := s.db.QueryRow(`
+SELECT id FROM issues
+WHERE project_id = ? AND (source_url = ? OR lower(source_url) = lower(?))
+LIMIT 1
+`, projectID, sourceURL, sourceURL).Scan(&id)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.GetIssue(id)
+}
+
 // ListIssueIndex returns queryable issue columns without loading document bodies.
 func (s *Store) ListIssueIndex(projectID string) ([]IssueIndexRow, error) {
 	var rows *sql.Rows
@@ -992,6 +1014,24 @@ func (s *Store) GetExecutorConfig() (model.ExecutorConfig, error) {
 		return model.DefaultExecutorConfig(), nil
 	}
 	return cfg.Normalize(), nil
+}
+
+func (s *Store) GetIssueImportTokens() (model.IssueImportTokens, error) {
+	var cfg model.IssueImportTokens
+	ok, err := s.GetSetting("issue_import_tokens", &cfg)
+	if err != nil {
+		return cfg, err
+	}
+	if !ok {
+		return model.IssueImportTokens{}, nil
+	}
+	return cfg, nil
+}
+
+func (s *Store) PutIssueImportTokens(cfg model.IssueImportTokens) error {
+	existing, _ := s.GetIssueImportTokens()
+	merged := model.MergeImportTokens(existing, cfg)
+	return s.PutSetting("issue_import_tokens", merged)
 }
 
 func (s *Store) PutExecutorConfig(cfg model.ExecutorConfig) error {
