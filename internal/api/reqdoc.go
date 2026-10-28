@@ -101,6 +101,13 @@ func (s *Server) handleAcceptRequirement(w http.ResponseWriter, r *http.Request)
 	}
 	if issue.HasReqDoc() {
 		issue.AcceptRequirement()
+		source, sourceURL := requirementRevisionProvenance(issue)
+		rev, err := s.Store.AppendRequirementRevision(issue.ID, issue.ReqDoc.RawMarkdown, source, sourceURL)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		issue.CurrentRequirementRevisionID = rev.ID
 	} else {
 		issue.DocPhase = model.DocPhaseDesign
 	}
@@ -111,6 +118,16 @@ func (s *Server) handleAcceptRequirement(w http.ResponseWriter, r *http.Request)
 	}
 	saved, _ := s.Store.GetIssue(issue.ID)
 	writeJSON(w, 200, saved)
+}
+
+func requirementRevisionProvenance(issue *model.Issue) (source, sourceURL string) {
+	if issue == nil {
+		return "manual", ""
+	}
+	if u := strings.TrimSpace(issue.SourceURL); u != "" {
+		return "import", u
+	}
+	return "manual", ""
 }
 
 func (s *Server) handleAcceptDesign(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +150,14 @@ func (s *Server) handleAcceptDesign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issue.AcceptDesign()
+	reqRevID := strings.TrimSpace(issue.CurrentRequirementRevisionID)
+	rev, err := s.Store.AppendDevelopmentRevision(issue.ID, reqRevID, issue.DesignMarkdown())
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	issue.CurrentDevelopmentRevisionID = rev.ID
+	issue.DesignRequirementRevisionID = reqRevID
 	issue.UpdatedAt = model.NowISO()
 	if err := s.Store.UpsertIssue(*issue); err != nil {
 		writeErr(w, 500, err.Error())

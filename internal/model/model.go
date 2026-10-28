@@ -466,15 +466,51 @@ type Issue struct {
 	SubRequirements   []SubRequirement   `json:"subRequirements,omitempty"`
 	CurrentSubID      string             `json:"currentSubId,omitempty"`
 	ReworkSubID       string             `json:"reworkSubId,omitempty"`
-	AutoDevLogs       []AutoDevLog       `json:"autoDevLogs"`
-	AutoDevProgress   int                `json:"autoDevProgress"`
-	PRInfo            *PRInfo            `json:"prInfo,omitempty"`
-	ReviewFeedback    string             `json:"reviewFeedback,omitempty"`
-	ReviewComments    []DiffComment      `json:"reviewComments,omitempty"`
-	AgentSessionID    string             `json:"agentSessionId,omitempty"`
-	PendingLLM        *PendingLLMSession `json:"pendingLlm,omitempty"`
-	CreatedAt         string             `json:"createdAt"`
-	UpdatedAt         string             `json:"updatedAt"`
+	// CurrentRequirementRevisionID is the latest accepted requirement revision (M4).
+	CurrentRequirementRevisionID string `json:"currentRequirementRevisionId,omitempty"`
+	// CurrentDevelopmentRevisionID is the latest accepted design revision (M4).
+	CurrentDevelopmentRevisionID string `json:"currentDevelopmentRevisionId,omitempty"`
+	// DesignRequirementRevisionID is the requirement revision the current design cites (M4).
+	DesignRequirementRevisionID string `json:"designRequirementRevisionId,omitempty"`
+	AutoDevLogs                 []AutoDevLog       `json:"autoDevLogs"`
+	AutoDevProgress             int                `json:"autoDevProgress"`
+	PRInfo                      *PRInfo            `json:"prInfo,omitempty"`
+	ReviewFeedback              string             `json:"reviewFeedback,omitempty"`
+	ReviewComments              []DiffComment      `json:"reviewComments,omitempty"`
+	AgentSessionID              string             `json:"agentSessionId,omitempty"`
+	PendingLLM                  *PendingLLMSession `json:"pendingLlm,omitempty"`
+	CreatedAt                   string             `json:"createdAt"`
+	UpdatedAt                   string             `json:"updatedAt"`
+}
+
+// RequirementRevision is an immutable accepted requirement snapshot (M4).
+type RequirementRevision struct {
+	ID        string `json:"id"`
+	IssueID   string `json:"issueId"`
+	RawMarkdown string `json:"rawMarkdown"`
+	// Source is manual | chat | import.
+	Source    string `json:"source,omitempty"`
+	SourceURL string `json:"sourceUrl,omitempty"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// DevelopmentRevisionCommit is one repo's commit SHA on a development revision (M4).
+type DevelopmentRevisionCommit struct {
+	ID         string `json:"id"`
+	RevisionID string `json:"revisionId"`
+	RepoID     string `json:"repoId"`
+	SHA        string `json:"sha"`
+	CreatedAt  string `json:"createdAt"`
+}
+
+// DevelopmentRevision is an immutable accepted design snapshot linked to a requirement revision (M4).
+type DevelopmentRevision struct {
+	ID                     string                       `json:"id"`
+	IssueID                string                       `json:"issueId"`
+	RequirementRevisionID  string                       `json:"requirementRevisionId"`
+	RawMarkdown            string                       `json:"rawMarkdown"`
+	CreatedAt              string                       `json:"createdAt"`
+	Commits                []DevelopmentRevisionCommit  `json:"commits,omitempty"`
 }
 
 // NormalizePriority returns a valid priority; empty/unknown → medium.
@@ -684,11 +720,20 @@ func (iss *Issue) RequirementAccepted() bool {
 	return true
 }
 
-// DesignStale is true when the requirement was edited after the Dev Spec was written.
+// DesignStale is true when the requirement was edited after the Dev Spec was written,
+// or when the current design does not cite the latest accepted requirement revision (M4).
 // Legacy issues (no ReqDoc) are never considered stale.
 func (iss *Issue) DesignStale() bool {
 	if iss == nil || !iss.HasReqDoc() {
 		return false
+	}
+	if !iss.HasDevSpecMarkdown() {
+		return false
+	}
+	curReq := strings.TrimSpace(iss.CurrentRequirementRevisionID)
+	cited := strings.TrimSpace(iss.DesignRequirementRevisionID)
+	if curReq != "" && cited != "" && cited != curReq {
+		return true
 	}
 	reqTouch := strings.TrimSpace(iss.ReqDoc.UpdatedAt)
 	if reqTouch == "" {
@@ -715,6 +760,39 @@ func (iss *Issue) DesignStale() bool {
 		return true
 	}
 	return reqTouch > iss.DevSpec.UpdatedAt
+}
+
+// DesignMarkdown returns the current design body for a development revision snapshot.
+func (iss *Issue) DesignMarkdown() string {
+	if iss == nil {
+		return ""
+	}
+	if iss.HasSubRequirements() {
+		var b strings.Builder
+		for i, sub := range iss.SubRequirements {
+			if i > 0 {
+				b.WriteString("\n\n---\n\n")
+			}
+			fmt.Fprintf(&b, "## %s\n\n", firstNonEmpty(sub.Title, sub.ID))
+			if sub.DevSpec != nil {
+				b.WriteString(strings.TrimSpace(sub.DevSpec.RawMarkdown))
+			}
+		}
+		return b.String()
+	}
+	if iss.DevSpec == nil {
+		return ""
+	}
+	return strings.TrimSpace(iss.DevSpec.RawMarkdown)
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 // AcceptRequirement marks the current ReqDoc as confirmed.
