@@ -8,7 +8,6 @@ import {
   designStale,
   designAccepted,
   hasDevSpecMarkdown,
-  hasUnverifiedModifies,
   legacySpecOnly,
   backlogBlockReason,
 } from '../../lib/subreq';
@@ -112,14 +111,7 @@ export const StatusFocusBanner: React.FC<StatusFocusBannerProps> = ({
       window.alert(t.backlogNeedsRepo);
       return;
     }
-    if (hasUnverifiedModifies(issue)) {
-      const ok = window.confirm(
-        lang === 'zh'
-          ? '开发设计中仍有未核实的修改点（文件可能不存在）。确认仍要进入待执行吗？'
-          : 'Some modify/delete file changes are unverified. Move to backlog anyway?'
-      );
-      if (!ok) return;
-    }
+    // Skip window.confirm — WKWebView/Wails often swallows native dialogs (looks like no-op).
     onUpdateIssue({
       ...issue,
       status: 'backlog',

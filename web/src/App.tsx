@@ -654,12 +654,13 @@ export default function App() {
         return;
       }
       if (hasUnverifiedModifies(target)) {
-        const ok = window.confirm(
+        // Skip window.confirm — WKWebView/Wails often swallows it (looks like a no-op).
+        showToast(
+          'info',
           language === 'zh'
-            ? '开发设计中仍有未核实的修改点。确认仍要进入待执行吗？'
-            : 'Some modify/delete file changes are unverified. Move to backlog anyway?'
+            ? '开发设计中仍有未核实的修改点，已继续排期到待执行'
+            : 'Some modify/delete file changes are unverified; moved to backlog anyway'
         );
-        if (!ok) return;
       }
     }
     if (newStatus === 'in_review' && !target.prInfo) {

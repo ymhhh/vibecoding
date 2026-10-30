@@ -230,24 +230,19 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
     const reason = backlogBlockReason(issue, lang);
     if (reason) {
       setChatError(reason);
-      window.alert(reason);
       return;
     }
     if (!(issue.associatedRepoIds || []).length) {
-      const msg = t.backlogNeedsRepo;
-      setChatError(msg);
-      window.alert(msg);
+      setChatError(t.backlogNeedsRepo);
       return;
     }
-    if (hasUnverifiedModifies(issue)) {
-      const ok = window.confirm(
-        lang === 'zh'
-          ? '开发设计中仍有未核实的修改点。确认仍要进入待执行吗？'
-          : 'Some modify/delete file changes are unverified. Move to backlog anyway?'
-      );
-      if (!ok) return;
-    }
-    setChatError('');
+    // Do not use window.confirm — WKWebView/Wails often swallows it (click looks like a no-op).
+    const unverifiedHint = hasUnverifiedModifies(issue)
+      ? lang === 'zh'
+        ? '提示：开发设计中仍有未核实的修改点，已继续排期到待执行。'
+        : 'Note: some modify/delete file changes are unverified; scheduled to backlog anyway.'
+      : '';
+    setChatError(unverifiedHint);
     onUpdateIssue({
       ...issue,
       status: 'backlog',
