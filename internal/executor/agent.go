@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ymhhh/vibecoding/internal/model"
@@ -164,18 +166,55 @@ func (e *AgentExecutor) Run(ctx context.Context, req CodingRequest, emit Emit) (
 	stderrR.Close()
 	sessionID := <-sessionCh
 
-	if runCtx.Err() == context.DeadlineExceeded {
-		return Result{}, fmt.Errorf("agent %s timed out after %s", resolved.DisplayName, timeout)
+	// Prefer the controlling context over raw "signal: killed" from
+	// CommandContext: cancel/timeout both SIGKILL the child, which otherwise
+	// looks like an unexplained hard failure and skips JobCancelled handling.
+	if err := runCtx.Err(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return Result{SessionID: sessionID}, fmt.Errorf("agent %s timed out after %s", resolved.DisplayName, timeout)
+		}
+		return Result{SessionID: sessionID}, context.Canceled
 	}
 	if waitErr != nil {
 		msg := strings.TrimSpace(stderrBuf.String())
 		if msg == "" {
 			msg = waitErr.Error()
 		}
-		return Result{}, fmt.Errorf("agent %s failed: %s", resolved.DisplayName, truncate(msg, 2000))
+		if isSignalKilled(waitErr) {
+			return Result{SessionID: sessionID}, fmt.Errorf(
+				"agent %s was killed (SIGKILL — often OOM, host limit, or external kill): %s",
+				resolved.DisplayName, truncate(msg, 2000),
+			)
+		}
+		return Result{SessionID: sessionID}, fmt.Errorf("agent %s failed: %s", resolved.DisplayName, truncate(msg, 2000))
 	}
 	emit("agent", fmt.Sprintf("%s finished", resolved.DisplayName), "")
 	return Result{SessionID: sessionID}, nil
+}
+
+func isSignalKilled(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if status, ok := ee.Sys().(syscall.WaitStatus); ok {
+			return status.Signaled() && status.Signal() == syscall.SIGKILL
+		}
+	}
+	return strings.Contains(err.Error(), "signal: killed")
+}
+
+// IsKilled reports whether err (possibly wrapped) is a SIGKILL / host kill of the agent.
+func IsKilled(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isSignalKilled(err) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "was killed") || strings.Contains(msg, "signal: killed")
 }
 
 func (e *AgentExecutor) startCmd(ctx context.Context, name string, args []string, dir string, stdin io.Reader) *exec.Cmd {

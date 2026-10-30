@@ -137,12 +137,25 @@ func TestResolvePresetAndExpand(t *testing.T) {
 		if a == "HELLO" {
 			found = true
 		}
+		if a == "--resume" || a == "{session}" {
+			t.Fatalf("empty session should drop resume: %v", args)
+		}
 		if strings.Contains(a, "{prompt}") {
 			t.Fatalf("unexpanded arg %q", a)
 		}
 	}
 	if !found {
 		t.Fatalf("args=%v", args)
+	}
+	withSess, _ := ExpandArgs(c.Args, "HELLO", "chat-42")
+	resumeOK := false
+	for i, a := range withSess {
+		if a == "--resume" && i+1 < len(withSess) && withSess[i+1] == "chat-42" {
+			resumeOK = true
+		}
+	}
+	if !resumeOK {
+		t.Fatalf("expected --resume chat-42 in %v", withSess)
 	}
 
 	custom, err := ResolvePreset(model.ExecutorConfig{
@@ -181,15 +194,15 @@ func TestResolvePresetAndExpand(t *testing.T) {
 			t.Fatalf("empty session should drop resume: %v", noSess)
 		}
 	}
-	withSess, _ := ExpandArgs(claude.Args, "PROMPT", "sess-9")
+	claudeSess, _ := ExpandArgs(claude.Args, "PROMPT", "sess-9")
 	foundResume := false
-	for i, a := range withSess {
-		if a == "--resume" && i+1 < len(withSess) && withSess[i+1] == "sess-9" {
+	for i, a := range claudeSess {
+		if a == "--resume" && i+1 < len(claudeSess) && claudeSess[i+1] == "sess-9" {
 			foundResume = true
 		}
 	}
 	if !foundResume {
-		t.Fatalf("expected --resume sess-9 in %v", withSess)
+		t.Fatalf("expected --resume sess-9 in %v", claudeSess)
 	}
 }
 

@@ -212,12 +212,23 @@ func (r *Runner) developOne(
 				ModelConfig: cfg,
 			}
 			res, err := ex.Run(ctx, req, emit)
-			if err != nil {
-				return quality, fmt.Errorf("executor %s on %s: %w", ex.Name(), repo.Name, err)
-			}
 			if res.SessionID != "" {
 				sessionID = res.SessionID
 				r.persistAgentSession(issue, sessionID)
+			}
+			// Cursor/Claude are sometimes SIGKILL'd mid-run (OOM / host). Retry
+			// once with the saved session before failing the whole Auto-Dev job.
+			if err != nil && executor.IsKilled(err) && ctx.Err() == nil {
+				_ = r.appendLog(job, "coding", fmt.Sprintf("%s was killed on %s — retrying once with session resume", ex.Name(), repo.Name), err.Error())
+				req.Resume = sessionID
+				res, err = ex.Run(ctx, req, emit)
+				if res.SessionID != "" {
+					sessionID = res.SessionID
+					r.persistAgentSession(issue, sessionID)
+				}
+			}
+			if err != nil {
+				return quality, fmt.Errorf("executor %s on %s: %w", ex.Name(), repo.Name, err)
 			}
 			allChanges = append(allChanges, res.Changes...)
 		}

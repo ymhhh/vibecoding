@@ -40,9 +40,14 @@ func ResolvePreset(cfg model.ExecutorConfig, lookPath func(string) (string, erro
 				bin = "agent"
 			}
 		}
+		// --resume {session} matches Claude so heal / re-run Auto-Dev can continue
+		// the prior Cursor chat after signal:killed or a failed test round.
 		return ResolvedCmd{
-			Command:     bin,
-			Args:        []string{"--print", "--output-format", "stream-json", "--force", promptPlaceholder},
+			Command: bin,
+			Args: []string{
+				"--print", "--output-format", "stream-json", "--force",
+				"--resume", sessionPlaceholder, promptPlaceholder,
+			},
 			DisplayName: "cursor",
 		}, nil
 	case "codex":
